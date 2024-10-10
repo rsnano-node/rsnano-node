@@ -110,4 +110,5 @@ pub enum RpcCommand {
     WorkGenerate(WorkGenerateArgs),
     Republish(RepublishArgs),
     BlockCreate(BlockCreateArgs),
+    WorkPeersClear,
 }

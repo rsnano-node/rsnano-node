@@ -18,6 +18,7 @@ mod republish;
 mod sign;
 mod stats_clear;
 mod stop;
+mod work_peers_clear;
 mod unchecked;
 mod unchecked_clear;
 mod unchecked_get;
@@ -28,6 +29,7 @@ mod work_generate;
 mod work_validate;
 
 pub use address_with_port::*;
+pub use work_peers_clear::*;
 pub use block_create::*;
 pub use bootstrap::*;
 pub use bootstrap_any::*;

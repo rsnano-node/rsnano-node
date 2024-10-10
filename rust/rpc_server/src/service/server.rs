@@ -31,6 +31,8 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tracing::info;
 
+use super::work_peers_clear;
+
 #[derive(Clone)]
 struct RpcService {
     node: Arc<Node>,
@@ -66,6 +68,7 @@ async fn handle_rpc(
     Json(rpc_command): Json<RpcCommand>,
 ) -> Response {
     let response = match rpc_command {
+        RpcCommand::WorkPeersClear => work_peers_clear(rpc_service.node, rpc_service.enable_control).await,
         RpcCommand::AccountCreate(args) => {
             account_create(
                 rpc_service.node,
