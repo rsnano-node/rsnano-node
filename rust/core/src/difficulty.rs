@@ -2,6 +2,7 @@ use blake2::{
     digest::{Update, VariableOutput},
     Blake2bVar,
 };
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::mem::size_of;
 

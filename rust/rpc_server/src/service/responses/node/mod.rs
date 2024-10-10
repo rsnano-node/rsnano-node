@@ -17,6 +17,7 @@ mod republish;
 mod sign;
 mod stats_clear;
 mod stop;
+mod telemetry;
 mod unchecked;
 mod unchecked_clear;
 mod unchecked_get;
@@ -53,3 +54,5 @@ pub use uptime::*;
 pub use work_cancel::*;
 pub use work_generate::*;
 pub use work_validate::*;
+
+pub use telemetry::*;

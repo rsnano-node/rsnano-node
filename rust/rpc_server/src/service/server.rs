@@ -31,6 +31,8 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tracing::info;
 
+use super::telemetry;
+
 #[derive(Clone)]
 struct RpcService {
     node: Arc<Node>,
@@ -385,6 +387,9 @@ async fn handle_rpc(
         }
         RpcCommand::BlockCreate(args) => {
             block_create(rpc_service.node, rpc_service.enable_control, args).await
+        }
+        RpcCommand::Telemetry(args) => {
+            telemetry(rpc_service.node, args.address, args.port, args.raw).await
         }
         _ => todo!(),
     };
