@@ -1,9 +1,9 @@
 use rsnano_core::{Account, Amount, WalletId, DEV_GENESIS_KEY};
 use rsnano_ledger::DEV_GENESIS_ACCOUNT;
 use rsnano_node::wallets::WalletsExt;
+use rsnano_rpc_messages::SendArgs;
 use std::time::Duration;
 use test_helpers::{assert_timely_msg, setup_rpc_client_and_server, System};
-use rsnano_rpc_messages::SendArgs;
 
 #[test]
 fn send() {

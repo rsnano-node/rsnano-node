@@ -3,12 +3,7 @@ use rsnano_core::BlockHash;
 use serde::{Deserialize, Serialize};
 
 impl RpcCommand {
-    pub fn chain(
-        block: BlockHash,
-        count: u64,
-        offset: Option<u64>,
-        reverse: Option<bool>,
-    ) -> Self {
+    pub fn chain(block: BlockHash, count: u64, offset: Option<u64>, reverse: Option<bool>) -> Self {
         Self::Chain(ChainArgs::new(block, count, offset, reverse))
     }
 }

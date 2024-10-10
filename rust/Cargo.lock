@@ -3682,7 +3682,10 @@ version = "0.1.0"
 dependencies = [
  "eframe",
  "egui_extras",
+ "num",
+ "num-derive 0.3.3",
  "num-format",
+ "num-traits",
  "rsnano_core",
  "rsnano_ledger",
  "rsnano_messages",

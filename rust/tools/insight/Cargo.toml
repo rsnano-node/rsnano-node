@@ -14,3 +14,6 @@ rsnano_node = { path = "../../node" }
 rsnano_ledger = { path = "../../ledger" }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 num-format = "0.4.4"
+num = "0"
+num-traits = "0"
+num-derive = "0"

@@ -1,13 +1,13 @@
-use crate::AppModel;
+use crate::AppViewModel;
 use eframe::egui::{self, global_theme_preference_switch, Button, Grid, Label, ScrollArea, Sense};
 use egui_extras::{Column, TableBuilder};
 
 pub(crate) struct InsightApp {
-    model: AppModel,
+    model: AppViewModel,
 }
 
 impl InsightApp {
-    pub(crate) fn new(model: AppModel) -> Self {
+    pub(crate) fn new(model: AppViewModel) -> Self {
         Self { model }
     }
 }
