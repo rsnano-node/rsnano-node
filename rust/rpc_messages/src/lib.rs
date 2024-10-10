@@ -21,6 +21,7 @@ pub enum RpcCommand {
     Receive(ReceiveArgs),
     Send(SendArgs),
     WalletAdd(WalletAddArgs),
+    WorkPeers,
     AccountCreate(AccountCreateArgs),
     AccountBalance(AccountBalanceArgs),
     AccountsCreate(AccountsCreateArgs),
