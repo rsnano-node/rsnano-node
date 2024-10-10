@@ -26,6 +26,7 @@ mod uptime;
 mod work_cancel;
 mod work_generate;
 mod work_validate;
+mod work_peer_add;
 
 pub use address_with_port::*;
 pub use block_create::*;

@@ -1,3 +1,4 @@
+mod work_peer_add;
 mod block_create;
 mod bootstrap;
 mod bootstrap_any;
@@ -26,6 +27,7 @@ mod work_cancel;
 mod work_generate;
 mod work_validate;
 
+pub use work_peer_add::*;
 pub use block_create::*;
 pub use bootstrap::*;
 pub use bootstrap_any::*;
