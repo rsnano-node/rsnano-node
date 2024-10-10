@@ -3,7 +3,8 @@ use anyhow::{bail, Result};
 use reqwest::Client;
 pub use reqwest::Url;
 use rsnano_core::{
-    Account, Amount, BlockEnum, BlockHash, HashOrAccount, JsonBlock, PublicKey, QualifiedRoot, RawKey, WalletId, WorkNonce
+    Account, Amount, BlockHash, HashOrAccount, JsonBlock, PublicKey, QualifiedRoot, RawKey,
+    WalletId, WorkNonce,
 };
 use rsnano_rpc_messages::*;
 use serde::Serialize;
