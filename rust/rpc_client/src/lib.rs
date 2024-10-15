@@ -655,12 +655,13 @@ impl NanoRpcClient {
         &self,
         wallet: WalletId,
         destination: Account,
-        block: impl Into<JsonBlock>,
+        block: BlockHash,
     ) -> Result<()> {
         let request = RpcCommand::Receive(ReceiveArgs {
             wallet,
             account: destination,
-            block: block.into(),
+            block,
+            work: None,
         });
         self.rpc_request(&request).await?;
         Ok(())
@@ -698,7 +699,24 @@ impl NanoRpcClient {
         destination: Account,
     ) -> Result<()> {
         let block = self.send_block(wallet, source, destination).await?;
-        self.receive_block(wallet, destination, block).await
+        self.receive_block(wallet, destination, BlockEnum::from(block).hash()).await
+    }
+
+    pub async fn receive(
+        &self,
+        wallet: WalletId,
+        destination: Account,
+        block: BlockHash,
+        work: Option<WorkNonce>
+    ) -> Result<BlockHashRpcMessage> {
+        let cmd = RpcCommand::Receive(ReceiveArgs {
+            wallet,
+            account: destination,
+            block,
+            work
+        });
+        let result = self.rpc_request(&cmd).await?;
+        Ok(serde_json::from_value(result)?)
     }
 
     pub async fn keepalive(&self, address: Ipv6Addr, port: u16) -> Result<SuccessDto> {
