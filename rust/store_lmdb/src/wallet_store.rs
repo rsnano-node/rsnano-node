@@ -109,7 +109,7 @@ impl LmdbWalletStore {
         if let Err(lmdb::Error::NotFound) = txn.get(handle, Self::version_special().as_bytes()) {
             store.version_put(txn, Self::VERSION_CURRENT);
             let salt = RawKey::random();
-            store.entry_put_raw(txn, &Self::salt_special(), &WalletValue::new(salt, 0));
+            store.entry_put_raw(txn, &Self::salt_special(), &WalletValue::new(salt.clone(), 0));
             // Wallet key is a fixed random key that encrypts all entries
             let wallet_key = RawKey::random();
             let password = RawKey::zero();
@@ -121,7 +121,7 @@ impl LmdbWalletStore {
             store.entry_put_raw(
                 txn,
                 &Self::wallet_key_special(),
-                &WalletValue::new(encrypted, 0),
+                &WalletValue::new(encrypted.clone(), 0),
             );
             let wallet_key_enc = encrypted;
             guard.wallet_key_mem.value_set(wallet_key_enc);
@@ -367,10 +367,10 @@ impl LmdbWalletStore {
         if self.valid_password_locked(&guard, txn) {
             let password_new = self.derive_key(txn, password);
             let wallet_key = self.wallet_key_locked(&guard, txn);
-            guard.password.value_set(password_new);
+            guard.password.value_set(password_new.clone());
             let iv = self.salt(txn).initialization_vector_low();
             let encrypted = wallet_key.encrypt(&password_new, &iv);
-            guard.wallet_key_mem.value_set(encrypted);
+            guard.wallet_key_mem.value_set(encrypted.clone());
             self.entry_put_raw(
                 txn,
                 &Self::wallet_key_special(),
