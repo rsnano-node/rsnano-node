@@ -35,9 +35,6 @@ fn wallet_create_seed_some() {
     let wallets = node.wallets.wallet_ids();
 
     assert!(wallets.contains(&result.wallet));
-    assert!(result.last_restored_account.is_some());
-    assert!(result.restored_count.is_some());
-    assert_eq!(result.restored_count, Some(1));
 
     server.abort();
 }

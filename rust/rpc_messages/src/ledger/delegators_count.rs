@@ -1,21 +1,9 @@
-use crate::{AccountRpcMessage, RpcCommand};
+use crate::{common::AccountRpcMessage, RpcCommand};
 use rsnano_core::Account;
-use serde::{Deserialize, Serialize};
 
 impl RpcCommand {
     pub fn delegators_count(account: Account) -> Self {
-        Self::DelegatorsCount(AccountRpcMessage::new("account".to_string(), account))
-    }
-}
-
-#[derive(PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct CountDto {
-    pub count: u64,
-}
-
-impl CountDto {
-    pub fn new(count: u64) -> Self {
-        Self { count }
+        Self::DelegatorsCount(AccountRpcMessage::new(account))
     }
 }
 
@@ -38,20 +26,5 @@ mod tests {
         let deserialized: RpcCommand = serde_json::from_str(json).unwrap();
         let expected = RpcCommand::delegators_count(Account::zero());
         assert_eq!(deserialized, expected);
-    }
-
-    #[test]
-    fn serialize_count_dto() {
-        let count_dto = CountDto::new(42);
-        let serialized = serde_json::to_value(count_dto).unwrap();
-        let expected = json!({"count": 42});
-        assert_eq!(serialized, expected);
-    }
-
-    #[test]
-    fn deserialize_count_dto() {
-        let json = r#"{"count": 42}"#;
-        let deserialized: CountDto = serde_json::from_str(json).unwrap();
-        assert_eq!(deserialized, CountDto::new(42));
     }
 }

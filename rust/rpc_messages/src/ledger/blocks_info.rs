@@ -1,12 +1,12 @@
-use std::collections::HashMap;
-
-use crate::{BlockInfoDto, BlocksHashesRpcMessage, RpcCommand};
+use super::BlockInfoDto;
+use crate::{common::HashesArgs, RpcCommand};
 use rsnano_core::BlockHash;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 impl RpcCommand {
-    pub fn blocks_info(blocks: Vec<BlockHash>) -> Self {
-        Self::BlocksInfo(BlocksHashesRpcMessage::new("hashes".to_string(), blocks))
+    pub fn blocks_info(hashes: Vec<BlockHash>) -> Self {
+        Self::BlocksInfo(HashesArgs::new(hashes))
     }
 }
 

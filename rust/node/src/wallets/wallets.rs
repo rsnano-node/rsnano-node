@@ -26,6 +26,7 @@ use rsnano_store_lmdb::{
     create_backup_file, BinaryDbIterator, KeyType, LmdbEnv, LmdbIteratorImpl, LmdbWalletStore,
     LmdbWriteTransaction, Transaction,
 };
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     fmt,
@@ -39,7 +40,7 @@ use std::{
 };
 use tracing::{info, warn};
 
-#[derive(FromPrimitive, Debug)]
+#[derive(FromPrimitive, Debug, Serialize, Deserialize)]
 pub enum WalletsError {
     None,
     Generic,

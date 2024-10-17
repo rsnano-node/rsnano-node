@@ -14,7 +14,7 @@ fn uptime() {
         .runtime
         .block_on(async { rpc_client.uptime().await.unwrap() });
 
-    assert!(result.value > 0);
+    assert!(result.seconds > 0);
 
     server.abort();
 }

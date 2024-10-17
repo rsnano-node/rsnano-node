@@ -1,9 +1,32 @@
-use crate::{AccountRpcMessage, RpcCommand};
+use crate::{common::AccountRpcMessage, RpcCommand};
 use rsnano_core::Account;
+use serde::{Deserialize, Serialize};
 
 impl RpcCommand {
     pub fn account_representative(account: Account) -> Self {
-        Self::AccountRepresentative(AccountRpcMessage::new("account".to_string(), account))
+        Self::AccountRepresentative(AccountRpcMessage::new(account))
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct AccountRepresentativeArgs {
+    pub account: Account,
+}
+
+impl AccountRepresentativeArgs {
+    pub fn new(account: Account) -> Self {
+        Self { account }
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct AccountRepresentativeDto {
+    pub representative: Account,
+}
+
+impl AccountRepresentativeDto {
+    pub fn new(representative: Account) -> Self {
+        Self { representative }
     }
 }
 

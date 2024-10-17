@@ -1,11 +1,10 @@
 use rsnano_core::{Account, Amount, BlockHash};
 use rsnano_node::Node;
-use rsnano_rpc_messages::{ReceivableArgs, ReceivableDto, SourceInfo};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{ReceivableArgs, ReceivableDto, RpcDto, SourceInfo};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub async fn receivable(node: Arc<Node>, args: ReceivableArgs) -> String {
+pub async fn receivable(node: Arc<Node>, args: ReceivableArgs) -> RpcDto {
     let transaction = node.store.tx_begin_read();
     let receivables = node.ledger.any().account_receivable_upper_bound(
         &transaction,
@@ -110,5 +109,5 @@ pub async fn receivable(node: Arc<Node>, args: ReceivableArgs) -> String {
         }
     };
 
-    to_string_pretty(&receivable_dto).unwrap()
+    RpcDto::Receivable(receivable_dto)
 }

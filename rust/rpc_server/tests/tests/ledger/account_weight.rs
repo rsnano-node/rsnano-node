@@ -16,7 +16,7 @@ fn account_weight() {
             .unwrap()
     });
 
-    assert_eq!(result.value, Amount::MAX);
+    assert_eq!(result.weight, Amount::MAX);
 
     server.abort();
 }

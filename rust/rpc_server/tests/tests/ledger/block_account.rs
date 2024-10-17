@@ -16,7 +16,7 @@ fn block_account() {
             .unwrap()
     });
 
-    assert_eq!(result.value, DEV_GENESIS_ACCOUNT.to_owned());
+    assert_eq!(result.account, DEV_GENESIS_ACCOUNT.to_owned());
 
     server.abort();
 }

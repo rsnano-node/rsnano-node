@@ -1,9 +1,9 @@
-use crate::{AccountRpcMessage, RpcCommand};
+use crate::{common::AccountRpcMessage, RpcCommand};
 use rsnano_core::Account;
 
 impl RpcCommand {
     pub fn validate_account_number(account: Account) -> Self {
-        Self::ValidateAccountNumber(AccountRpcMessage::new("account".to_string(), account))
+        Self::ValidateAccountNumber(AccountRpcMessage::new(account))
     }
 }
 

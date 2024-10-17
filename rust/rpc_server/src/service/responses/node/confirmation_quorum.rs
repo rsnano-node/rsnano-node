@@ -1,10 +1,9 @@
 use rsnano_core::utils::NULL_ENDPOINT;
 use rsnano_node::Node;
-use rsnano_rpc_messages::{ConfirmationQuorumDto, PeerDetailsDto};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{ConfirmationQuorumArgs, ConfirmationQuorumDto, PeerDetailsDto, RpcDto};
 use std::sync::Arc;
 
-pub async fn confirmation_quorum(node: Arc<Node>, peer_details: Option<bool>) -> String {
+pub async fn confirmation_quorum(node: Arc<Node>, args: ConfirmationQuorumArgs) -> RpcDto {
     let quorum = node.online_reps.lock().unwrap();
 
     let mut confirmation_quorum_dto = ConfirmationQuorumDto {
@@ -17,7 +16,7 @@ pub async fn confirmation_quorum(node: Arc<Node>, peer_details: Option<bool>) ->
         peers: None,
     };
 
-    if peer_details.unwrap_or(false) {
+    if args.peer_details.unwrap_or(false) {
         let peers = quorum
             .peered_reps()
             .iter()
@@ -41,5 +40,5 @@ pub async fn confirmation_quorum(node: Arc<Node>, peer_details: Option<bool>) ->
         confirmation_quorum_dto.peers = Some(peers);
     }
 
-    to_string_pretty(&confirmation_quorum_dto).unwrap()
+    RpcDto::ConfirmationQuorum(confirmation_quorum_dto)
 }

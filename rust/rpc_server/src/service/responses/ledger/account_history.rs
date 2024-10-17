@@ -1,10 +1,9 @@
 use rsnano_core::{Account, Amount, Block, BlockEnum, BlockHash, BlockSubType};
 use rsnano_node::Node;
-use rsnano_rpc_messages::{AccountHistoryArgs, AccountHistoryDto, HistoryEntry};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{AccountHistoryArgs, AccountHistoryDto, HistoryEntry, RpcDto};
 use std::sync::Arc;
 
-pub async fn account_history(node: Arc<Node>, args: AccountHistoryArgs) -> String {
+pub async fn account_history(node: Arc<Node>, args: AccountHistoryArgs) -> RpcDto {
     let transaction = node.store.tx_begin_read();
     let mut history = Vec::new();
     let reverse = args.reverse.unwrap_or(false);
@@ -80,7 +79,7 @@ pub async fn account_history(node: Arc<Node>, args: AccountHistoryArgs) -> Strin
         next,
     };
 
-    to_string_pretty(&account_history).unwrap_or_else(|_| "".to_string())
+    RpcDto::AccountHistory(account_history)
 }
 
 fn create_history_entry(

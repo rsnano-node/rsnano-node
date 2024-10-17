@@ -1,9 +1,9 @@
-use crate::{AddressWithPortArg, RpcCommand};
+use crate::{common::AddressWithPortArgs, RpcCommand};
 use std::net::Ipv6Addr;
 
 impl RpcCommand {
     pub fn keepalive(address: Ipv6Addr, port: u16) -> Self {
-        Self::Keepalive(AddressWithPortArg::new(address, port))
+        Self::Keepalive(AddressWithPortArgs::new(address, port))
     }
 }
 

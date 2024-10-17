@@ -1,9 +1,9 @@
-use crate::{BlockHashRpcMessage, RpcCommand};
+use crate::{common::HashRpcMessage, RpcCommand};
 use rsnano_core::BlockHash;
 
 impl RpcCommand {
     pub fn block_confirm(hash: BlockHash) -> Self {
-        Self::BlockConfirm(BlockHashRpcMessage::new("hash".to_string(), hash))
+        Self::BlockConfirm(HashRpcMessage::new(hash))
     }
 }
 

@@ -138,10 +138,14 @@ impl LedgerAccountInfo {
 
 #[cfg(test)]
 mod tests {
-    use crate::{LedgerAccountInfo, LedgerArgs, LedgerDto, RpcCommand};
+    use std::collections::HashMap;
+
+    use crate::{
+        ledger::{LedgerAccountInfo, LedgerArgs, LedgerDto},
+        RpcCommand,
+    };
     use rsnano_core::{Account, Amount, BlockHash};
     use serde_json::json;
-    use std::collections::HashMap;
 
     #[test]
     fn test_ledger_rpc_command_serialization() {

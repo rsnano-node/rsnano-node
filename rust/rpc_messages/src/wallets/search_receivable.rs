@@ -1,5 +1,4 @@
-use super::WalletRpcMessage;
-use crate::RpcCommand;
+use crate::{common::WalletRpcMessage, RpcCommand};
 use rsnano_core::WalletId;
 
 impl RpcCommand {

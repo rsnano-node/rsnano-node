@@ -1,7 +1,6 @@
 use rsnano_core::Account;
 use rsnano_node::Node;
-use rsnano_rpc_messages::{AccountInfo, ErrorDto, WalletLedgerArgs, WalletLedgerDto};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{AccountInfo, ErrorDto, RpcDto, WalletLedgerArgs, WalletLedgerDto};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -9,9 +8,9 @@ pub async fn wallet_ledger(
     node: Arc<Node>,
     enable_control: bool,
     args: WalletLedgerArgs,
-) -> String {
+) -> RpcDto {
     if !enable_control {
-        return to_string_pretty(&ErrorDto::new("RPC control is disabled".to_string())).unwrap();
+        return RpcDto::Error(ErrorDto::RPCControlDisabled);
     }
 
     let WalletLedgerArgs {
@@ -37,12 +36,11 @@ pub async fn wallet_ledger(
                 receivable,
                 modified_since,
             );
-            to_string_pretty(&WalletLedgerDto {
+            RpcDto::WalletLedger(WalletLedgerDto {
                 accounts: accounts_json,
             })
-            .unwrap()
         }
-        Err(e) => to_string_pretty(&ErrorDto::new(e.to_string())).unwrap(),
+        Err(e) => RpcDto::Error(ErrorDto::WalletsError(e)),
     }
 }
 

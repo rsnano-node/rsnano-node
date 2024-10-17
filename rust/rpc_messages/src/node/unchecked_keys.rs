@@ -1,5 +1,6 @@
 use crate::RpcCommand;
-use rsnano_core::{BlockHash, HashOrAccount, JsonBlock};
+use rsnano_core::HashOrAccount;
+use rsnano_core::{BlockHash, JsonBlock};
 use serde::{Deserialize, Serialize};
 
 impl RpcCommand {
@@ -9,14 +10,12 @@ impl RpcCommand {
 }
 
 #[derive(PartialEq, Eq, Debug, Serialize, Deserialize)]
-
 pub struct UncheckedKeysArgs {
     pub key: HashOrAccount,
     pub count: u64,
 }
 
 #[derive(PartialEq, Eq, Debug, Serialize, Deserialize)]
-
 pub struct UncheckedKeysDto {
     pub unchecked: Vec<UncheckedKeyDto>,
 }
@@ -28,7 +27,6 @@ impl UncheckedKeysDto {
 }
 
 #[derive(PartialEq, Eq, Debug, Serialize, Deserialize)]
-
 pub struct UncheckedKeyDto {
     pub key: BlockHash,
     pub hash: BlockHash,

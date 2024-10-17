@@ -19,7 +19,7 @@ fn account_create_default() {
         .runtime
         .block_on(async { rpc_client.account_create(wallet_id).await.unwrap() });
 
-    assert!(node.wallets.exists(&result.value.into()));
+    assert!(node.wallets.exists(&result.account.into()));
 
     server.abort();
 }
@@ -43,7 +43,7 @@ fn account_create_index_max() {
         .runtime
         .block_on(async { rpc_client.account_create(args).await.unwrap() });
 
-    assert!(node.wallets.exists(&result.value.into()));
+    assert!(node.wallets.exists(&result.account.into()));
 
     server.abort();
 }
@@ -67,11 +67,11 @@ fn account_create_work_without_precomputed_work() {
         .runtime
         .block_on(async { rpc_client.account_create(args).await.unwrap() });
 
-    assert!(node.wallets.exists(&result.value.into()));
+    assert!(node.wallets.exists(&result.account.into()));
 
     assert_timely(Duration::from_secs(5), || {
         node.wallets
-            .work_get2(&wallet_id, &result.value.into())
+            .work_get2(&wallet_id, &result.account.into())
             .unwrap()
             == 0
     });

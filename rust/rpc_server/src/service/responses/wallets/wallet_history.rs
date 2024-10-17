@@ -1,21 +1,13 @@
-use rsnano_core::{Account, Amount, Block, BlockEnum, BlockHash, BlockSubType, WalletId};
+use rsnano_core::{Account, Amount, Block, BlockEnum, BlockHash, BlockSubType};
 use rsnano_node::Node;
-use rsnano_rpc_messages::{ErrorDto, HistoryEntryDto, WalletHistoryDto};
+use rsnano_rpc_messages::{ErrorDto, HistoryEntryDto, RpcDto, WalletHistoryArgs, WalletHistoryDto};
 use rsnano_store_lmdb::Transaction;
-use serde_json::to_string_pretty;
 use std::sync::Arc;
 
-pub async fn wallet_history(
-    node: Arc<Node>,
-    wallet: WalletId,
-    modified_since: Option<u64>,
-) -> String {
-    let accounts = match node.wallets.get_accounts_of_wallet(&wallet) {
+pub async fn wallet_history(node: Arc<Node>, args: WalletHistoryArgs) -> RpcDto {
+    let accounts = match node.wallets.get_accounts_of_wallet(&args.wallet) {
         Ok(accounts) => accounts,
-        Err(e) => {
-            let error_dto = ErrorDto::new(e.to_string());
-            return to_string_pretty(&error_dto).unwrap();
-        }
+        Err(e) => return RpcDto::Error(ErrorDto::WalletsError(e)),
     };
 
     let mut entries: Vec<HistoryEntryDto> = Vec::new();
@@ -33,7 +25,7 @@ pub async fn wallet_history(
                         .map(|sideband| sideband.timestamp)
                         .unwrap_or_default();
 
-                    if timestamp >= modified_since.unwrap_or(0) {
+                    if timestamp >= args.modified_since.unwrap_or(0) {
                         let entry = process_block(
                             &node,
                             &block_transaction,
@@ -61,7 +53,7 @@ pub async fn wallet_history(
     entries.sort_by(|a, b| b.local_timestamp.cmp(&a.local_timestamp));
     let wallet_history_dto = WalletHistoryDto::new(entries);
 
-    to_string_pretty(&wallet_history_dto).unwrap()
+    RpcDto::WalletHistory(wallet_history_dto)
 }
 
 fn process_block(

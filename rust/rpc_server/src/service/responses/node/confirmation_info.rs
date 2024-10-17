@@ -1,17 +1,13 @@
-use rsnano_core::{Amount, QualifiedRoot};
+use rsnano_core::Amount;
 use rsnano_node::Node;
-use rsnano_rpc_messages::{ConfirmationBlockInfoDto, ConfirmationInfoDto, ErrorDto};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{
+    ConfirmationBlockInfoDto, ConfirmationInfoArgs, ConfirmationInfoDto, ErrorDto, RpcDto,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub async fn confirmation_info(
-    node: Arc<Node>,
-    root: QualifiedRoot,
-    contents: Option<bool>,
-    representatives: Option<bool>,
-) -> String {
-    let election = node.active.election(&root);
+pub async fn confirmation_info(node: Arc<Node>, args: ConfirmationInfoArgs) -> RpcDto {
+    let election = node.active.election(&args.root);
 
     if let Some(election) = election {
         if !node.active.confirmed(&election) {
@@ -27,11 +23,11 @@ pub async fn confirmation_info(
                     representatives: None,
                 };
 
-                if contents.unwrap_or(true) {
+                if args.contents.unwrap_or(true) {
                     block_info.contents = Some(block.json_representation());
                 }
 
-                if representatives.unwrap_or(false) {
+                if args.representatives.unwrap_or(false) {
                     let mut reps = HashMap::new();
                     for (representative, vote) in &info.last_votes {
                         if hash == &vote.hash {
@@ -59,11 +55,11 @@ pub async fn confirmation_info(
                 blocks,
             );
 
-            to_string_pretty(&confirmation_info_dto).unwrap()
+            RpcDto::ConfirmationInfo(confirmation_info_dto)
         } else {
-            to_string_pretty(&ErrorDto::new("Confirmation not found".to_string())).unwrap()
+            RpcDto::Error(ErrorDto::ConfirmationInfoNotFound)
         }
     } else {
-        to_string_pretty(&ErrorDto::new("Invalid root".to_string())).unwrap()
+        RpcDto::Error(ErrorDto::InvalidRoot)
     }
 }

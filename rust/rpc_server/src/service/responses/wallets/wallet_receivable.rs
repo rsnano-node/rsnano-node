@@ -1,21 +1,20 @@
 use rsnano_core::{Amount, BlockHash};
 use rsnano_node::Node;
-use rsnano_rpc_messages::{ReceivableDto, SourceInfo, WalletReceivableArgs};
-use serde_json::json;
+use rsnano_rpc_messages::{ErrorDto, ReceivableDto, RpcDto, SourceInfo, WalletReceivableArgs};
 use std::{collections::HashMap, sync::Arc};
 
 pub async fn wallet_receivable(
     node: Arc<Node>,
     enable_control: bool,
     args: WalletReceivableArgs,
-) -> String {
+) -> RpcDto {
     if !enable_control {
-        return json!({"error": "RPC control is disabled"}).to_string();
+        return RpcDto::Error(ErrorDto::RPCControlDisabled);
     }
 
     let accounts = match node.wallets.get_accounts_of_wallet(&args.wallet) {
         Ok(accounts) => accounts,
-        Err(e) => return json!({"error": e.to_string()}).to_string(),
+        Err(e) => return RpcDto::Error(ErrorDto::WalletsError(e)),
     };
 
     let tx = node.ledger.read_txn();
@@ -86,5 +85,5 @@ pub async fn wallet_receivable(
         }
     };
 
-    serde_json::to_string_pretty(&result).unwrap()
+    RpcDto::WalletReceivable(result)
 }

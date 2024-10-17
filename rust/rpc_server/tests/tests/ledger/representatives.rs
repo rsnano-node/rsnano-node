@@ -17,7 +17,7 @@ fn representatives_rpc_response() {
     let mut representatives = HashMap::new();
     representatives.insert(*DEV_GENESIS_ACCOUNT, Amount::MAX);
 
-    assert_eq!(result.value, representatives);
+    assert_eq!(result.representatives, representatives);
 
     server.abort();
 }

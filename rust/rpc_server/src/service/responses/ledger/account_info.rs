@@ -1,16 +1,15 @@
 use rsnano_core::Amount;
 use rsnano_node::Node;
-use rsnano_rpc_messages::{AccountInfoArgs, AccountInfoDto, ErrorDto};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{AccountInfoArgs, AccountInfoDto, ErrorDto, RpcDto};
 use std::sync::Arc;
 
-pub async fn account_info(node: Arc<Node>, args: AccountInfoArgs) -> String {
+pub async fn account_info(node: Arc<Node>, args: AccountInfoArgs) -> RpcDto {
     let txn = node.ledger.read_txn();
     let include_confirmed = args.include_confirmed.unwrap_or(false);
 
     let info = match node.ledger.any().get_account(&txn, &args.account) {
         Some(account_info) => account_info,
-        None => return to_string_pretty(&ErrorDto::new("Account not found".to_string())).unwrap(),
+        None => return RpcDto::Error(ErrorDto::AccountNotFound),
     };
 
     let confirmation_height_info = node
@@ -93,5 +92,5 @@ pub async fn account_info(node: Arc<Node>, args: AccountInfoArgs) -> String {
         }
     }
 
-    to_string_pretty(&account_info).unwrap()
+    RpcDto::AccountInfo(account_info)
 }

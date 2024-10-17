@@ -1,10 +1,9 @@
 use rsnano_node::Node;
-use rsnano_rpc_messages::U64RpcMessage;
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{RpcDto, UptimeDto};
 use std::{sync::Arc, time::Instant};
 
-pub async fn uptime(node: Arc<Node>) -> String {
+pub async fn uptime(node: Arc<Node>) -> RpcDto {
     let seconds = Instant::now() - node.telemetry.startup_time;
-    let uptime = U64RpcMessage::new("seconds".to_string(), seconds.as_secs());
-    to_string_pretty(&uptime).unwrap()
+    let uptime = UptimeDto::new(seconds.as_secs());
+    RpcDto::Uptime(uptime)
 }

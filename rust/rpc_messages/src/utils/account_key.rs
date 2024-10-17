@@ -1,9 +1,9 @@
-use crate::{AccountRpcMessage, RpcCommand};
+use crate::{common::AccountRpcMessage, RpcCommand};
 use rsnano_core::Account;
 
 impl RpcCommand {
     pub fn account_key(account: Account) -> Self {
-        Self::AccountKey(AccountRpcMessage::new("account".to_string(), account))
+        Self::AccountKey(AccountRpcMessage::new(account))
     }
 }
 

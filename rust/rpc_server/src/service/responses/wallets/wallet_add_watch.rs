@@ -1,21 +1,18 @@
-use rsnano_core::{Account, WalletId};
 use rsnano_node::Node;
-use rsnano_rpc_messages::{ErrorDto, SuccessDto};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{ErrorDto, RpcDto, SuccessDto, WalletAddWatchArgs};
 use std::sync::Arc;
 
 pub async fn wallet_add_watch(
     node: Arc<Node>,
     enable_control: bool,
-    wallet: WalletId,
-    accounts: Vec<Account>,
-) -> String {
+    args: WalletAddWatchArgs,
+) -> RpcDto {
     if enable_control {
-        match node.wallets.insert_watch(&wallet, &accounts) {
-            Ok(_) => to_string_pretty(&SuccessDto::new()).unwrap(),
-            Err(e) => to_string_pretty(&ErrorDto::new(e.to_string())).unwrap(),
+        match node.wallets.insert_watch(&args.wallet, &args.accounts) {
+            Ok(_) => RpcDto::WalletAddWatch(SuccessDto::new()),
+            Err(e) => RpcDto::Error(ErrorDto::WalletsError(e)),
         }
     } else {
-        to_string_pretty(&ErrorDto::new("RPC control is disabled".to_string())).unwrap()
+        RpcDto::Error(ErrorDto::RPCControlDisabled)
     }
 }

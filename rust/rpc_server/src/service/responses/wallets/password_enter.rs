@@ -1,12 +1,10 @@
-use rsnano_core::WalletId;
 use rsnano_node::{wallets::WalletsExt, Node};
-use rsnano_rpc_messages::{BoolDto, ErrorDto};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{ErrorDto, RpcDto, ValidDto, WalletWithPasswordArgs};
 use std::sync::Arc;
 
-pub async fn password_enter(node: Arc<Node>, wallet: WalletId, password: String) -> String {
-    match node.wallets.enter_password(wallet, &password) {
-        Ok(_) => to_string_pretty(&BoolDto::new("valid".to_string(), true)).unwrap(),
-        Err(e) => to_string_pretty(&ErrorDto::new(e.to_string())).unwrap(),
+pub async fn password_enter(node: Arc<Node>, args: WalletWithPasswordArgs) -> RpcDto {
+    match node.wallets.enter_password(args.wallet, &args.password) {
+        Ok(_) => RpcDto::PasswordEnter(ValidDto::new(true)),
+        Err(e) => RpcDto::Error(ErrorDto::WalletsError(e)),
     }
 }

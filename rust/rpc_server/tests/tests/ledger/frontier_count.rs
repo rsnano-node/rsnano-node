@@ -11,7 +11,7 @@ fn frontier_count() {
         .runtime
         .block_on(async { rpc_client.frontier_count().await.unwrap() });
 
-    assert_eq!(result.value, 1);
+    assert_eq!(result.count, 1);
 
     server.abort();
 }

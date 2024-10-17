@@ -41,7 +41,7 @@ fn receivable_exists_confirmed() {
         .runtime
         .block_on(async { rpc_client.receivable_exists(send.hash()).await.unwrap() });
 
-    assert_eq!(result.value, true);
+    assert_eq!(result.exists, true);
 
     server.abort();
 }
@@ -64,7 +64,7 @@ fn test_receivable_exists_unconfirmed() {
         .runtime
         .block_on(async { rpc_client.receivable_exists(args).await.unwrap() });
 
-    assert_eq!(result.value, true);
+    assert_eq!(result.exists, true);
 
     server.abort();
 }
@@ -84,7 +84,7 @@ fn test_receivable_exists_non_existent() {
             .unwrap()
     });
 
-    assert_eq!(result.value, false);
+    assert_eq!(result.exists, false);
 
     server.abort();
 }

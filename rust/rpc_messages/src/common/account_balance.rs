@@ -20,7 +20,7 @@ impl AccountBalanceDto {
 
 #[cfg(test)]
 mod tests {
-    use crate::AccountBalanceDto;
+    use crate::common::AccountBalanceDto;
     use rsnano_core::Amount;
 
     #[test]

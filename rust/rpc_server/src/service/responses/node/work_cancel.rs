@@ -1,14 +1,12 @@
-use rsnano_core::BlockHash;
 use rsnano_node::Node;
-use rsnano_rpc_messages::{ErrorDto, SuccessDto};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{ErrorDto, HashRpcMessage, RpcDto, SuccessDto};
 use std::sync::Arc;
 
-pub async fn work_cancel(node: Arc<Node>, enable_control: bool, hash: BlockHash) -> String {
+pub async fn work_cancel(node: Arc<Node>, enable_control: bool, args: HashRpcMessage) -> RpcDto {
     if enable_control {
-        node.distributed_work.cancel(hash.into());
-        to_string_pretty(&SuccessDto::new()).unwrap()
+        node.distributed_work.cancel(args.hash.into());
+        RpcDto::WorkCancel(SuccessDto::new())
     } else {
-        to_string_pretty(&ErrorDto::new("RPC control is disabled".to_string())).unwrap()
+        RpcDto::Error(ErrorDto::RPCControlDisabled)
     }
 }

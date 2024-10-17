@@ -35,7 +35,7 @@ fn send() {
 
     assert_timely_msg(
         Duration::from_secs(5),
-        || node.ledger.get_block(&tx, &result.value).is_some(),
+        || node.ledger.get_block(&tx, &result.block).is_some(),
         "Send block not found in ledger",
     );
 

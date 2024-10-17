@@ -3,28 +3,28 @@ use rsnano_core::BlockHash;
 use serde::{Deserialize, Serialize};
 
 impl RpcCommand {
-    pub fn bootstrap_lazy(args: BootsrapLazyArgs) -> Self {
+    pub fn bootstrap_lazy(args: BootstrapLazyArgs) -> Self {
         Self::BoostrapLazy(args)
     }
 }
 
-impl From<BlockHash> for BootsrapLazyArgs {
+impl From<BlockHash> for BootstrapLazyArgs {
     fn from(value: BlockHash) -> Self {
         Self::builder(value).build()
     }
 }
 
 #[derive(PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct BootsrapLazyArgs {
+pub struct BootstrapLazyArgs {
     pub hash: BlockHash,
     pub force: Option<bool>,
     pub id: Option<String>,
 }
 
-impl BootsrapLazyArgs {
+impl BootstrapLazyArgs {
     pub fn builder(hash: BlockHash) -> BootsrapLazyArgsBuilder {
         BootsrapLazyArgsBuilder {
-            args: BootsrapLazyArgs {
+            args: BootstrapLazyArgs {
                 hash,
                 force: None,
                 id: None,
@@ -34,7 +34,7 @@ impl BootsrapLazyArgs {
 }
 
 pub struct BootsrapLazyArgsBuilder {
-    args: BootsrapLazyArgs,
+    args: BootstrapLazyArgs,
 }
 
 impl BootsrapLazyArgsBuilder {
@@ -48,7 +48,7 @@ impl BootsrapLazyArgsBuilder {
         self
     }
 
-    pub fn build(self) -> BootsrapLazyArgs {
+    pub fn build(self) -> BootstrapLazyArgs {
         self.args
     }
 }

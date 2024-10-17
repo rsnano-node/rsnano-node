@@ -1,9 +1,9 @@
-use crate::{AmountDto, RpcCommand};
+use crate::{common::AmountRpcMessage, RpcCommand};
 use rsnano_core::Amount;
 
 impl RpcCommand {
     pub fn nano_to_raw(amount: Amount) -> Self {
-        Self::NanoToRaw(AmountDto::new("amount".to_string(), amount))
+        Self::NanoToRaw(AmountRpcMessage::new(amount))
     }
 }
 

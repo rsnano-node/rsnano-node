@@ -19,7 +19,7 @@ fn wallet_locked_false() {
         .runtime
         .block_on(async { rpc_client.wallet_locked(wallet_id).await.unwrap() });
 
-    assert_eq!(result.value, false);
+    assert_eq!(result.locked, false);
 
     server.abort();
 }
@@ -41,7 +41,7 @@ fn wallet_locked_true() {
         .runtime
         .block_on(async { rpc_client.wallet_locked(wallet_id).await.unwrap() });
 
-    assert_eq!(result.value, true);
+    assert_eq!(result.locked, true);
 
     server.abort();
 }

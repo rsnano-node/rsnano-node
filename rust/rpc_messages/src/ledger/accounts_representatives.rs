@@ -1,4 +1,4 @@
-use crate::{AccountsRpcMessage, RpcCommand};
+use crate::{common::AccountsRpcMessage, RpcCommand};
 use rsnano_core::Account;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

@@ -20,7 +20,7 @@ impl KeyPairDto {
 
 #[cfg(test)]
 mod tests {
-    use crate::KeyPairDto;
+    use crate::common::KeyPairDto;
     use rsnano_core::{Account, PublicKey, RawKey};
 
     #[test]

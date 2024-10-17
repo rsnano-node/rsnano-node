@@ -1,27 +1,18 @@
-use rsnano_core::{RawKey, WalletId};
 use rsnano_node::{wallets::WalletsExt, Node};
-use rsnano_rpc_messages::{AccountRpcMessage, ErrorDto};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{AccountRpcMessage, ErrorDto, RpcDto, WalletAddArgs};
 use std::sync::Arc;
 
-pub async fn wallet_add(
-    node: Arc<Node>,
-    enable_control: bool,
-    wallet: WalletId,
-    raw_key: RawKey,
-    work: Option<bool>,
-) -> String {
+pub async fn wallet_add(node: Arc<Node>, enable_control: bool, args: WalletAddArgs) -> RpcDto {
     if enable_control {
-        let generate_work = work.unwrap_or(true);
-        match node.wallets.insert_adhoc2(&wallet, &raw_key, generate_work) {
-            Ok(account) => to_string_pretty(&AccountRpcMessage::new(
-                "account".to_string(),
-                account.as_account(),
-            ))
-            .unwrap(),
-            Err(e) => to_string_pretty(&ErrorDto::new(e.to_string())).unwrap(),
+        let generate_work = args.work.unwrap_or(true);
+        match node
+            .wallets
+            .insert_adhoc2(&args.wallet, &args.key, generate_work)
+        {
+            Ok(account) => RpcDto::Account(AccountRpcMessage::new(account.as_account())),
+            Err(e) => RpcDto::Error(ErrorDto::WalletsError(e)),
         }
     } else {
-        to_string_pretty(&ErrorDto::new("RPC control is disabled".to_string())).unwrap()
+        RpcDto::Error(ErrorDto::RPCControlDisabled)
     }
 }

@@ -16,7 +16,7 @@ fn block_confirm() {
             .unwrap()
     });
 
-    assert_eq!(result.value, true);
+    assert_eq!(result.started, true);
 
     server.abort();
 }

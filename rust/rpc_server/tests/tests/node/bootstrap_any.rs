@@ -38,7 +38,7 @@ fn bootstrap_any_fails_with_legacy_bootstrap_disabled() {
 
     assert_eq!(
         result.err().map(|e| e.to_string()),
-        Some("node returned error: \"Bootstrap legacy is disabled\"".to_string())
+        Some("node returned error: \"Legacy bootstrap is disabled\"".to_string())
     );
 
     server.abort();

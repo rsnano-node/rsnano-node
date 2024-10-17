@@ -1,10 +1,9 @@
 use rsnano_core::Account;
 use rsnano_node::Node;
-use rsnano_rpc_messages::AmountDto;
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{AvailableSupplyDto, RpcDto};
 use std::sync::Arc;
 
-pub async fn available_supply(node: Arc<Node>) -> String {
+pub async fn available_supply(node: Arc<Node>) -> RpcDto {
     let tx = node.store.env.tx_begin_read();
     let genesis_balance =
         node.balance(&node.network_params.ledger.genesis.account_field().unwrap());
@@ -30,7 +29,5 @@ pub async fn available_supply(node: Arc<Node>) -> String {
 
     let available = genesis_balance - landing_balance - faucet_balance - burned_balance;
 
-    let available_supply = AmountDto::new("available".to_string(), available);
-
-    to_string_pretty(&available_supply).unwrap()
+    RpcDto::AvailableSupply(AvailableSupplyDto::new(available))
 }

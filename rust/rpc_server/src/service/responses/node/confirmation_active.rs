@@ -1,10 +1,9 @@
 use rsnano_node::Node;
-use rsnano_rpc_messages::ConfirmationActiveDto;
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{ConfirmationActiveArgs, ConfirmationActiveDto, RpcDto};
 use std::{sync::Arc, usize};
 
-pub async fn confirmation_active(node: Arc<Node>, announcements: Option<u64>) -> String {
-    let announcements = announcements.unwrap_or(0);
+pub async fn confirmation_active(node: Arc<Node>, args: ConfirmationActiveArgs) -> RpcDto {
+    let announcements = args.announcements.unwrap_or(0);
     let mut confirmed = 0;
     let mut confirmations = Vec::new();
 
@@ -27,5 +26,5 @@ pub async fn confirmation_active(node: Arc<Node>, announcements: Option<u64>) ->
 
     let confirmation_active_dto = ConfirmationActiveDto::new(confirmations, unconfirmed, confirmed);
 
-    to_string_pretty(&confirmation_active_dto).unwrap()
+    RpcDto::ConfirmationActive(confirmation_active_dto)
 }

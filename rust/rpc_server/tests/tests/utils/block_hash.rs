@@ -15,7 +15,7 @@ fn block_hash() {
         .block_on(async { rpc_client.block_hash(block).await.unwrap() });
 
     assert_eq!(
-        result.value,
+        result.hash,
         BlockHash::decode_hex("D9E4A975D8C4E7FE6F3569B6B60EE19D7C090C5B6E316416DC36F8C90264DF60")
             .unwrap()
     );

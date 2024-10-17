@@ -57,7 +57,7 @@ impl ReceivableExistsArgsBuilder {
 
 #[cfg(test)]
 mod tests {
-    use crate::{ReceivableExistsArgs, RpcCommand};
+    use super::{ReceivableExistsArgs, RpcCommand};
     use rsnano_core::BlockHash;
     use serde_json::to_string_pretty;
 

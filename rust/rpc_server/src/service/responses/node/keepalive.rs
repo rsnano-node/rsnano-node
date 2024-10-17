@@ -1,24 +1,15 @@
 use rsnano_messages::{Keepalive, Message};
 use rsnano_network::{DropPolicy, TrafficType};
 use rsnano_node::Node;
-use rsnano_rpc_messages::{ErrorDto, SuccessDto};
-use serde_json::to_string_pretty;
-use std::{
-    net::{Ipv6Addr, SocketAddrV6},
-    sync::Arc,
-};
+use rsnano_rpc_messages::{AddressWithPortArgs, ErrorDto, RpcDto, StartedDto};
+use std::{net::SocketAddrV6, sync::Arc};
 
-pub async fn keepalive(
-    node: Arc<Node>,
-    enable_control: bool,
-    address: Ipv6Addr,
-    port: u16,
-) -> String {
+pub async fn keepalive(node: Arc<Node>, enable_control: bool, args: AddressWithPortArgs) -> RpcDto {
     if !enable_control {
-        return to_string_pretty(&ErrorDto::new("RPC control is disabled".to_string())).unwrap();
+        return RpcDto::Error(ErrorDto::RPCControlDisabled);
     }
 
-    let peering_addr = SocketAddrV6::new(address.into(), port, 0, 0);
+    let peering_addr = SocketAddrV6::new(args.address.into(), args.port, 0, 0);
     let channel_id = node
         .network_info
         .read()
@@ -37,8 +28,8 @@ pub async fn keepalive(
                 TrafficType::Generic,
             );
 
-            to_string_pretty(&SuccessDto::new()).unwrap()
+            RpcDto::Keepalive(StartedDto::new(true))
         }
-        None => to_string_pretty(&ErrorDto::new("Peer not found".to_string())).unwrap(),
+        None => RpcDto::Error(ErrorDto::PeerNotFound),
     }
 }

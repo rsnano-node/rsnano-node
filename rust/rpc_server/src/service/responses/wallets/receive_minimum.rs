@@ -1,13 +1,12 @@
 use rsnano_node::Node;
-use rsnano_rpc_messages::{AmountDto, ErrorDto};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{AmountRpcMessage, ErrorDto, RpcDto};
 use std::sync::Arc;
 
-pub async fn receive_minimum(node: Arc<Node>, enable_control: bool) -> String {
+pub async fn receive_minimum(node: Arc<Node>, enable_control: bool) -> RpcDto {
     if enable_control {
         let amount = node.config.receive_minimum;
-        to_string_pretty(&AmountDto::new("amount".to_string(), amount)).unwrap()
+        RpcDto::ReceiveMinimum(AmountRpcMessage::new(amount))
     } else {
-        to_string_pretty(&ErrorDto::new("RPC control is disabled".to_string())).unwrap()
+        RpcDto::Error(ErrorDto::RPCControlDisabled)
     }
 }

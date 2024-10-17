@@ -1,16 +1,15 @@
 use rsnano_core::{BlockDetails, BlockEnum, BlockType, DifficultyV1, Epoch, PendingKey};
 use rsnano_node::Node;
-use rsnano_rpc_messages::{ErrorDto, WorkGenerateArgs, WorkGenerateDto, WorkVersionDto};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{ErrorDto, RpcDto, WorkGenerateArgs, WorkGenerateDto, WorkVersionDto};
 use std::sync::Arc;
 
 pub async fn work_generate(
     node: Arc<Node>,
     enable_control: bool,
     args: WorkGenerateArgs,
-) -> String {
+) -> RpcDto {
     if !enable_control {
-        return to_string_pretty(&ErrorDto::new("RPC control is disabled".to_string())).unwrap();
+        return RpcDto::Error(ErrorDto::RPCControlDisabled);
     }
 
     let work_version = args.version.unwrap_or(WorkVersionDto::Work1).into();
@@ -28,25 +27,23 @@ pub async fn work_generate(
                 .work
                 .threshold_entry(BlockType::State, work_version)
     {
-        return to_string_pretty(&ErrorDto::new("Difficulty out of valid range".to_string()))
-            .unwrap();
+        return RpcDto::Error(ErrorDto::DifficultyOutOfRange);
     }
 
     // Handle block if provided
     if let Some(block) = args.block {
         let block_enum: BlockEnum = block.into();
         if args.hash != block_enum.hash() {
-            return to_string_pretty(&ErrorDto::new("Block root mismatch".to_string())).unwrap();
+            return RpcDto::Error(ErrorDto::BlockRootMismatch);
         }
         if args.version.is_some() && work_version != block_enum.work_version() {
-            return to_string_pretty(&ErrorDto::new("Block work version mismatch".to_string()))
-                .unwrap();
+            return RpcDto::Error(ErrorDto::BlockWorkVersioMismatch);
         }
         // Recalculate difficulty if not provided
         if args.difficulty.is_none() && args.multiplier.is_none() {
             difficulty = difficulty_ledger(node.clone(), &block_enum.into());
         }
-        if node
+        /*if node
             .network_params
             .work
             .difficulty(work_version, &args.hash.into(), 0)
@@ -56,7 +53,7 @@ pub async fn work_generate(
                 "Block work is already sufficient".to_string(),
             ))
             .unwrap();
-        }
+        }*/
     }
 
     let use_peers = args.use_peers.unwrap_or(false);
@@ -72,25 +69,25 @@ pub async fn work_generate(
     //let secondary_work_peers = args.secondary_work_peers.unwrap_or(false);
 
     let work_result = if !use_peers {
-        if node.distributed_work.work_generation_enabled() {
-            node.distributed_work
-                .make(args.hash.into(), difficulty, account)
-                .await
-        } else {
+        //if node.distributed_work.work_generation_enabled() {
+        node.distributed_work
+            .make(args.hash.into(), difficulty, account)
+            .await
+        /*} else {
             return to_string_pretty(&ErrorDto::new(
                 "Local work generation is disabled".to_string(),
             ))
             .unwrap();
-        }
+        }*/
     } else {
-        if node.distributed_work.work_generation_enabled() {
-            node.distributed_work
-                .make(args.hash.into(), difficulty, account)
-                .await
-        } else {
+        //if node.distributed_work.work_generation_enabled() {
+        node.distributed_work
+            .make(args.hash.into(), difficulty, account)
+            .await
+        /*} else {
             return to_string_pretty(&ErrorDto::new("Work generation is disabled".to_string()))
                 .unwrap();
-        }
+        }*/
     };
 
     let result_difficulty =
@@ -109,7 +106,7 @@ pub async fn work_generate(
         args.hash,
     );
 
-    to_string_pretty(&work_generate_dto).unwrap()
+    RpcDto::WorkGenerate(work_generate_dto)
 }
 
 fn difficulty_ledger(node: Arc<Node>, block: &BlockEnum) -> u64 {

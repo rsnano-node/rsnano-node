@@ -16,7 +16,7 @@ fn account_block_count() {
             .unwrap()
     });
 
-    assert_eq!(result.value, 1);
+    assert_eq!(result.count, 1);
 
     server.abort();
 }
