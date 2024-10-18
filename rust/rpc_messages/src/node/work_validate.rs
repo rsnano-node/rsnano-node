@@ -9,7 +9,6 @@ impl RpcCommand {
 }
 
 #[derive(PartialEq, Eq, Debug, Serialize, Deserialize)]
-
 pub struct WorkValidateArgs {
     pub work: WorkNonce,
     pub hash: BlockHash,

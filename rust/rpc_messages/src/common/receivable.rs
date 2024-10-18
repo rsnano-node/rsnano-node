@@ -30,7 +30,7 @@ impl ReceivableDto {
 
 #[cfg(test)]
 mod tests {
-    use crate::{ReceivableDto, SourceInfo};
+    use crate::common::{ReceivableDto, SourceInfo};
     use rsnano_core::{Account, Amount, BlockHash};
     use std::collections::HashMap;
 

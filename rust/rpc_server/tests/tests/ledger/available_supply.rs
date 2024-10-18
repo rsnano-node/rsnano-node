@@ -12,7 +12,7 @@ fn available_supply() {
         .runtime
         .block_on(async { rpc_client.available_supply().await.unwrap() });
 
-    assert_eq!(result.value, Amount::MAX);
+    assert_eq!(result.available, Amount::MAX);
 
     server.abort();
 }

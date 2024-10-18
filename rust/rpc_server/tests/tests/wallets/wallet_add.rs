@@ -104,7 +104,7 @@ fn wallet_add_work_true() {
 
     assert_timely(Duration::from_secs(5), || {
         node.wallets
-            .work_get2(&wallet_id, &result.value.into())
+            .work_get2(&wallet_id, &result.account.into())
             .unwrap()
             != 0
     });
@@ -135,7 +135,7 @@ fn wallet_add_work_false() {
 
     assert_timely(Duration::from_secs(5), || {
         node.wallets
-            .work_get2(&wallet_id, &result.value.into())
+            .work_get2(&wallet_id, &result.account.into())
             .unwrap()
             == 0
     });

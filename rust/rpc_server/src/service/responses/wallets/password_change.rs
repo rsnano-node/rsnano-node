@@ -1,21 +1,18 @@
-use rsnano_core::WalletId;
 use rsnano_node::Node;
-use rsnano_rpc_messages::{ErrorDto, SuccessDto};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{ErrorDto, RpcDto, SuccessDto, WalletWithPasswordArgs};
 use std::sync::Arc;
 
 pub async fn password_change(
     node: Arc<Node>,
     enable_control: bool,
-    wallet: WalletId,
-    password: String,
-) -> String {
+    args: WalletWithPasswordArgs,
+) -> RpcDto {
     if enable_control {
-        match node.wallets.rekey(&wallet, password) {
-            Ok(_) => to_string_pretty(&SuccessDto::new()).unwrap(),
-            Err(e) => to_string_pretty(&ErrorDto::new(e.to_string())).unwrap(),
+        match node.wallets.rekey(&args.wallet, args.password) {
+            Ok(_) => RpcDto::PasswordChange(SuccessDto::new()),
+            Err(e) => RpcDto::Error(ErrorDto::WalletsError(e)),
         }
     } else {
-        to_string_pretty(&ErrorDto::new("RPC control is disabled".to_string())).unwrap()
+        RpcDto::Error(ErrorDto::RPCControlDisabled)
     }
 }

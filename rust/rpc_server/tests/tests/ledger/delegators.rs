@@ -17,7 +17,7 @@ fn delegators_rpc_response() {
     let mut delegators = HashMap::new();
     delegators.insert(*DEV_GENESIS_ACCOUNT, Amount::MAX);
 
-    assert_eq!(result.value, delegators);
+    assert_eq!(result.delegators, delegators);
 
     server.abort();
 }

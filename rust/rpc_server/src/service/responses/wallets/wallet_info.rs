@@ -1,15 +1,14 @@
-use rsnano_core::{Amount, WalletId};
+use rsnano_core::Amount;
 use rsnano_node::Node;
-use rsnano_rpc_messages::{ErrorDto, WalletInfoDto};
+use rsnano_rpc_messages::{ErrorDto, RpcDto, WalletInfoDto, WalletRpcMessage};
 use rsnano_store_lmdb::KeyType;
-use serde_json::to_string_pretty;
 use std::sync::Arc;
 
-pub async fn wallet_info(node: Arc<Node>, wallet: WalletId) -> String {
+pub async fn wallet_info(node: Arc<Node>, args: WalletRpcMessage) -> RpcDto {
     let block_transaction = node.ledger.read_txn();
-    let accounts = match node.wallets.get_accounts_of_wallet(&wallet) {
+    let accounts = match node.wallets.get_accounts_of_wallet(&args.wallet) {
         Ok(accounts) => accounts,
-        Err(e) => return to_string_pretty(&ErrorDto::new(e.to_string())).unwrap(),
+        Err(e) => return RpcDto::Error(ErrorDto::WalletsError(e)),
     };
 
     let mut balance = Amount::zero();
@@ -38,7 +37,7 @@ pub async fn wallet_info(node: Arc<Node>, wallet: WalletId) -> String {
             .ledger
             .account_receivable(&block_transaction, &account, false);
 
-        match node.wallets.key_type(wallet, &account.into()) {
+        match node.wallets.key_type(args.wallet, &account.into()) {
             KeyType::Deterministic => deterministic_count += 1,
             KeyType::Adhoc => adhoc_count += 1,
             _ => (),
@@ -47,7 +46,7 @@ pub async fn wallet_info(node: Arc<Node>, wallet: WalletId) -> String {
         count += 1;
     }
 
-    let deterministic_index = node.wallets.deterministic_index_get(&wallet).unwrap();
+    let deterministic_index = node.wallets.deterministic_index_get(&args.wallet).unwrap();
 
     let account_balance = WalletInfoDto::new(
         balance,
@@ -61,5 +60,5 @@ pub async fn wallet_info(node: Arc<Node>, wallet: WalletId) -> String {
         cemented_block_count,
     );
 
-    to_string_pretty(&account_balance).unwrap()
+    RpcDto::WalletInfo(account_balance)
 }

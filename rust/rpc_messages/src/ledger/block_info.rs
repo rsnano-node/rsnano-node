@@ -1,10 +1,10 @@
-use crate::{BlockHashRpcMessage, RpcCommand};
+use crate::{common::HashRpcMessage, RpcCommand};
 use rsnano_core::{Account, Amount, BlockHash, BlockSubType, JsonBlock};
 use serde::{Deserialize, Serialize};
 
 impl RpcCommand {
-    pub fn block_info(block: BlockHash) -> Self {
-        Self::BlockInfo(BlockHashRpcMessage::new("hash".to_string(), block))
+    pub fn block_info(hash: BlockHash) -> Self {
+        Self::BlockInfo(HashRpcMessage::new(hash))
     }
 }
 

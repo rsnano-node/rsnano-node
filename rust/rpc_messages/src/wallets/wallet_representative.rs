@@ -1,9 +1,22 @@
-use crate::{RpcCommand, WalletRpcMessage};
+use crate::{common::WalletRpcMessage, RpcCommand};
+use rsnano_core::Account;
 use rsnano_core::WalletId;
+use serde::{Deserialize, Serialize};
 
 impl RpcCommand {
     pub fn wallet_representative(wallet: WalletId) -> Self {
         Self::WalletRepresentative(WalletRpcMessage::new(wallet))
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct WalletRepresentativeDto {
+    pub representative: Account,
+}
+
+impl WalletRepresentativeDto {
+    pub fn new(representative: Account) -> Self {
+        Self { representative }
     }
 }
 

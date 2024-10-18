@@ -1,5 +1,6 @@
-use crate::{RpcCommand, WalletRpcMessage};
-use rsnano_core::{Amount, WalletId};
+use crate::{common::WalletRpcMessage, RpcCommand};
+use rsnano_core::Amount;
+use rsnano_core::WalletId;
 use serde::{Deserialize, Serialize};
 
 impl RpcCommand {
@@ -49,9 +50,28 @@ impl WalletInfoDto {
 
 #[cfg(test)]
 mod tests {
-    use crate::{RpcCommand, WalletInfoDto};
-    use rsnano_core::{Amount, WalletId};
+    use super::*;
+    use rsnano_core::WalletId;
     use serde_json::to_string_pretty;
+
+    #[test]
+    fn serialize_wallet_info() {
+        assert_eq!(
+            to_string_pretty(&RpcCommand::wallet_info(WalletId::zero())).unwrap(),
+            r#"{
+  "action": "wallet_info",
+  "wallet": "0000000000000000000000000000000000000000000000000000000000000000"
+}"#
+        )
+    }
+
+    #[test]
+    fn deserialize_wallet_info() {
+        let cmd = RpcCommand::wallet_info(WalletId::zero());
+        let serialized = serde_json::to_string_pretty(&cmd).unwrap();
+        let deserialized: RpcCommand = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(cmd, deserialized)
+    }
 
     #[test]
     fn serialize_wallet_info_dto() {
@@ -94,24 +114,5 @@ mod tests {
         };
 
         assert_eq!(deserialized, expected);
-    }
-
-    #[test]
-    fn serialize_wallet_info() {
-        assert_eq!(
-            to_string_pretty(&RpcCommand::wallet_info(WalletId::zero())).unwrap(),
-            r#"{
-  "action": "wallet_info",
-  "wallet": "0000000000000000000000000000000000000000000000000000000000000000"
-}"#
-        )
-    }
-
-    #[test]
-    fn deserialize_wallet_info() {
-        let cmd = RpcCommand::wallet_info(WalletId::zero());
-        let serialized = serde_json::to_string_pretty(&cmd).unwrap();
-        let deserialized: RpcCommand = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(cmd, deserialized)
     }
 }

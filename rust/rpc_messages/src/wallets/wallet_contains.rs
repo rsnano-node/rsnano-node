@@ -1,17 +1,10 @@
-use crate::{RpcCommand, WalletWithAccountArgs};
+use crate::{common::WalletWithAccountArgs, RpcCommand};
 use rsnano_core::{Account, WalletId};
-use serde::{Deserialize, Serialize};
 
 impl RpcCommand {
     pub fn wallet_contains(wallet: WalletId, account: Account) -> Self {
         Self::WalletContains(WalletWithAccountArgs::new(wallet, account))
     }
-}
-
-#[derive(PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct WalletContainsArgs {
-    pub wallet: WalletId,
-    pub account: Account,
 }
 
 #[cfg(test)]

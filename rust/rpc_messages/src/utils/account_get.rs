@@ -1,4 +1,4 @@
-use crate::{KeyRpcMessage, RpcCommand};
+use crate::{common::KeyRpcMessage, RpcCommand};
 use rsnano_core::PublicKey;
 
 impl RpcCommand {

@@ -1,24 +1,10 @@
-use crate::{AccountWithCountArgs, RpcCommand};
+use crate::RpcCommand;
 use rsnano_core::{Account, Amount, BlockHash, BlockSubType, Signature, WorkNonce};
 use serde::{Deserialize, Serialize};
 
 impl RpcCommand {
     pub fn account_history(account_history_args: AccountHistoryArgs) -> Self {
         Self::AccountHistory(account_history_args)
-    }
-}
-
-impl Into<AccountHistoryArgs> for AccountWithCountArgs {
-    fn into(self) -> AccountHistoryArgs {
-        AccountHistoryArgs {
-            account: self.account,
-            count: self.count,
-            raw: None,
-            head: None,
-            offset: None,
-            reverse: None,
-            account_filter: None,
-        }
     }
 }
 

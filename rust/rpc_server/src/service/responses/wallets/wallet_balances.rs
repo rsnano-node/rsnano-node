@@ -1,16 +1,11 @@
-use rsnano_core::{Amount, WalletId};
+use rsnano_core::Amount;
 use rsnano_node::Node;
-use rsnano_rpc_messages::{AccountBalanceDto, AccountsBalancesDto};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{AccountBalanceDto, AccountsBalancesDto, RpcDto, WalletBalancesArgs};
 use std::{collections::HashMap, sync::Arc};
 
-pub async fn wallet_balances(
-    node: Arc<Node>,
-    wallet: WalletId,
-    threshold: Option<Amount>,
-) -> String {
-    let threshold = threshold.unwrap_or(Amount::zero());
-    let accounts = node.wallets.get_accounts_of_wallet(&wallet).unwrap();
+pub async fn wallet_balances(node: Arc<Node>, args: WalletBalancesArgs) -> RpcDto {
+    let threshold = args.threshold.unwrap_or(Amount::zero());
+    let accounts = node.wallets.get_accounts_of_wallet(&args.wallet).unwrap();
     let mut balances = HashMap::new();
     let tx = node.ledger.read_txn();
     for account in accounts {
@@ -26,5 +21,5 @@ pub async fn wallet_balances(
             balances.insert(account, account_balance);
         }
     }
-    to_string_pretty(&AccountsBalancesDto { balances }).unwrap()
+    RpcDto::WalletBalances(AccountsBalancesDto { balances })
 }

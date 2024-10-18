@@ -15,7 +15,7 @@ fn raw_to_nano() {
             .unwrap()
     });
 
-    assert_eq!(result.value, Amount::nano(1));
+    assert_eq!(result.amount, Amount::nano(1));
 
     server.abort();
 }

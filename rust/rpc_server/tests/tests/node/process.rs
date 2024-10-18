@@ -28,7 +28,7 @@ fn process() {
         .runtime
         .block_on(async { rpc_client.process(args).await.unwrap() });
 
-    assert_eq!(result.value, send1.hash());
+    assert_eq!(result.hash, send1.hash());
 
     assert_eq!(node.latest(&*DEV_GENESIS_ACCOUNT), send1.hash());
 

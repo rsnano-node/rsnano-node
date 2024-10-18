@@ -19,7 +19,7 @@ fn wallet_representative() {
         .runtime
         .block_on(async { rpc_client.wallet_representative(wallet).await.unwrap() });
 
-    assert_eq!(result.value, PublicKey::zero().into());
+    assert_eq!(result.representative, PublicKey::zero().into());
 
     server.abort();
 }

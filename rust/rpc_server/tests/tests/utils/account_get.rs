@@ -17,7 +17,7 @@ fn account_get() {
         .runtime
         .block_on(async { rpc_client.account_get(PublicKey::zero()).await.unwrap() });
 
-    assert_eq!(result.value, PublicKey::zero().into());
+    assert_eq!(result.account, PublicKey::zero().into());
 
     server.abort();
 }

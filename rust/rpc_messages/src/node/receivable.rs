@@ -81,7 +81,7 @@ impl ReceivableArgsBuilder {
 
 #[cfg(test)]
 mod tests {
-    use crate::{ReceivableArgs, RpcCommand};
+    use super::{ReceivableArgs, RpcCommand};
     use rsnano_core::Account;
     use serde_json::to_string_pretty;
 

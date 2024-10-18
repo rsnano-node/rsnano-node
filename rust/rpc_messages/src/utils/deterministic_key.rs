@@ -22,7 +22,7 @@ impl DeterministicKeyArgs {
 
 #[cfg(test)]
 mod tests {
-    use crate::{DeterministicKeyArgs, RpcCommand};
+    use super::{DeterministicKeyArgs, RpcCommand};
     use rsnano_core::RawKey;
     use serde_json::to_string_pretty;
 

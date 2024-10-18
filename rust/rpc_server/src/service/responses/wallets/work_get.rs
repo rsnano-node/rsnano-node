@@ -1,21 +1,18 @@
-use rsnano_core::{Account, WalletId};
 use rsnano_node::Node;
-use rsnano_rpc_messages::{ErrorDto, WorkDto};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{ErrorDto, RpcDto, WalletWithAccountArgs, WorkDto};
 use std::sync::Arc;
 
 pub async fn work_get(
     node: Arc<Node>,
     enable_control: bool,
-    wallet: WalletId,
-    account: Account,
-) -> String {
+    args: WalletWithAccountArgs,
+) -> RpcDto {
     if enable_control {
-        match node.wallets.work_get2(&wallet, &account.into()) {
-            Ok(work) => to_string_pretty(&WorkDto::new(work.into())).unwrap(),
-            Err(e) => to_string_pretty(&ErrorDto::new(e.to_string())).unwrap(),
+        match node.wallets.work_get2(&args.wallet, &args.account.into()) {
+            Ok(work) => RpcDto::WorkGet(WorkDto::new(work.into())),
+            Err(e) => RpcDto::Error(ErrorDto::WalletsError(e)),
         }
     } else {
-        to_string_pretty(&ErrorDto::new("RPC control is disabled".to_string())).unwrap()
+        RpcDto::Error(ErrorDto::RPCControlDisabled)
     }
 }

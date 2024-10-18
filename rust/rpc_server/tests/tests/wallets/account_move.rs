@@ -34,7 +34,7 @@ fn account_move() {
             .unwrap()
     });
 
-    assert_eq!(result.value, true);
+    assert_eq!(result.moved, true);
 
     let new_wallet_accounts = node.wallets.get_accounts_of_wallet(&wallet).unwrap();
     let new_source_accounts = node.wallets.get_accounts_of_wallet(&source).unwrap();

@@ -1,7 +1,7 @@
 use rsnano_core::{Account, Amount, BlockSubType, PublicKey, WalletId, DEV_GENESIS_KEY};
 use rsnano_ledger::{DEV_GENESIS_ACCOUNT, DEV_GENESIS_HASH, DEV_GENESIS_PUB_KEY};
 use rsnano_node::wallets::WalletsExt;
-use rsnano_rpc_messages::{AccountHistoryArgs, AccountWithCountArgs};
+use rsnano_rpc_messages::AccountHistoryArgs;
 use test_helpers::{setup_rpc_client_and_server, System};
 
 #[test]
@@ -95,7 +95,7 @@ fn account_history() {
     // Set up RPC client and server
     let (rpc_client, server) = setup_rpc_client_and_server(node.clone(), true);
 
-    let args = AccountWithCountArgs::new(*DEV_GENESIS_ACCOUNT, 100);
+    let args = AccountHistoryArgs::new(*DEV_GENESIS_ACCOUNT, 100);
 
     let account_history = node
         .runtime

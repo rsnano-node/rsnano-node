@@ -1,11 +1,9 @@
-use rsnano_core::Account;
 use rsnano_node::Node;
-use rsnano_rpc_messages::CountDto;
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{AccountRpcMessage, CountRpcMessage, RpcDto};
 use std::sync::Arc;
 
-pub async fn delegators_count(node: Arc<Node>, account: Account) -> String {
-    let representative = account;
+pub async fn delegators_count(node: Arc<Node>, args: AccountRpcMessage) -> RpcDto {
+    let representative = args.account;
     let mut count = 0;
 
     let tx = node.ledger.read_txn();
@@ -18,5 +16,5 @@ pub async fn delegators_count(node: Arc<Node>, account: Account) -> String {
 
         iter.next();
     }
-    to_string_pretty(&CountDto::new(count)).unwrap()
+    RpcDto::DelegatorsCount(CountRpcMessage::new(count))
 }

@@ -1,9 +1,8 @@
 use rsnano_node::Node;
-use rsnano_rpc_messages::SuccessDto;
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{RpcDto, SuccessDto};
 use std::sync::Arc;
 
-pub async fn populate_backlog(node: Arc<Node>) -> String {
+pub async fn populate_backlog(node: Arc<Node>) -> RpcDto {
     node.backlog_population.trigger();
-    to_string_pretty(&SuccessDto::new()).unwrap()
+    RpcDto::PopulateBacklog(SuccessDto::new())
 }

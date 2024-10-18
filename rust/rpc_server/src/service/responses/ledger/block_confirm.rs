@@ -1,18 +1,20 @@
-use rsnano_core::BlockHash;
 use rsnano_node::{
     consensus::{ElectionStatus, ElectionStatusType},
     Node,
 };
-use rsnano_rpc_messages::{BoolDto, ErrorDto};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{ErrorDto, HashRpcMessage, RpcDto, StartedDto};
 use std::sync::Arc;
 
-pub async fn block_confirm(node: Arc<Node>, hash: BlockHash) -> String {
+pub async fn block_confirm(node: Arc<Node>, args: HashRpcMessage) -> RpcDto {
     let tx = node.ledger.read_txn();
-    match &node.ledger.any().get_block(&tx, &hash) {
+    match &node.ledger.any().get_block(&tx, &args.hash) {
         Some(block) => {
-            if !node.ledger.confirmed().block_exists_or_pruned(&tx, &hash) {
-                if !node.confirming_set.exists(&hash) {
+            if !node
+                .ledger
+                .confirmed()
+                .block_exists_or_pruned(&tx, &args.hash)
+            {
+                if !node.confirming_set.exists(&args.hash) {
                     node.election_schedulers
                         .manual
                         .push(Arc::new(block.clone()), None);
@@ -25,9 +27,8 @@ pub async fn block_confirm(node: Arc<Node>, hash: BlockHash) -> String {
                 status.election_status_type = ElectionStatusType::ActiveConfirmationHeight;
                 node.active.insert_recently_cemented(status);
             }
-            let block_confirm = BoolDto::new("started".to_string(), true);
-            to_string_pretty(&block_confirm).unwrap()
+            RpcDto::BlockConfirm(StartedDto::new(true))
         }
-        None => to_string_pretty(&ErrorDto::new("Block not found".to_string())).unwrap(),
+        None => RpcDto::Error(ErrorDto::BlockNotFound),
     }
 }

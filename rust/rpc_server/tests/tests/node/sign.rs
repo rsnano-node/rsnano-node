@@ -79,7 +79,7 @@ fn sign_without_key() {
 
     assert_eq!(
         result.err().map(|e| e.to_string()),
-        Some("node returned error: \"Block create key required\"".to_string())
+        Some("node returned error: \"Missing account information\"".to_string())
     );
 
     server.abort();

@@ -16,7 +16,7 @@ fn account_representative() {
             .unwrap()
     });
 
-    assert_eq!(result.value, *DEV_GENESIS_ACCOUNT);
+    assert_eq!(result.representative, *DEV_GENESIS_ACCOUNT);
 
     server.abort();
 }

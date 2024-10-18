@@ -1,14 +1,16 @@
-use rsnano_core::WalletId;
 use rsnano_node::Node;
-use rsnano_rpc_messages::{BoolDto, ErrorDto};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{DestroyedDto, ErrorDto, RpcDto, WalletRpcMessage};
 use std::sync::Arc;
 
-pub async fn wallet_destroy(node: Arc<Node>, enable_control: bool, wallet: WalletId) -> String {
+pub async fn wallet_destroy(
+    node: Arc<Node>,
+    enable_control: bool,
+    args: WalletRpcMessage,
+) -> RpcDto {
     if enable_control {
-        node.wallets.destroy(&wallet);
-        to_string_pretty(&BoolDto::new("destroyed".to_string(), true)).unwrap()
+        node.wallets.destroy(&args.wallet);
+        RpcDto::Destroyed(DestroyedDto::new(true))
     } else {
-        to_string_pretty(&ErrorDto::new("RPC control is disabled".to_string())).unwrap()
+        RpcDto::Error(ErrorDto::RPCControlDisabled)
     }
 }

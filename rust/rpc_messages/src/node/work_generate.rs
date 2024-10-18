@@ -1,7 +1,6 @@
+use crate::{common::WorkVersionDto, RpcCommand};
 use rsnano_core::{Account, BlockHash, JsonBlock, WorkNonce};
 use serde::{Deserialize, Serialize};
-
-use crate::{RpcCommand, WorkVersionDto};
 
 impl RpcCommand {
     pub fn work_generate(work_generate_args: WorkGenerateArgs) -> Self {

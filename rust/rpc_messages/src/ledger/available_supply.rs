@@ -1,8 +1,21 @@
 use crate::RpcCommand;
+use rsnano_core::Amount;
+use serde::{Deserialize, Serialize};
 
 impl RpcCommand {
     pub fn available_supply() -> Self {
         Self::AvailableSupply
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct AvailableSupplyDto {
+    pub available: Amount,
+}
+
+impl AvailableSupplyDto {
+    pub fn new(available: Amount) -> Self {
+        Self { available }
     }
 }
 

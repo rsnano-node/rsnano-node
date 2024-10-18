@@ -1,9 +1,9 @@
-use crate::{BlockHashRpcMessage, RpcCommand};
+use crate::{common::HashRpcMessage, RpcCommand};
 use rsnano_core::BlockHash;
 
 impl RpcCommand {
     pub fn block_account(hash: BlockHash) -> Self {
-        Self::BlockAccount(BlockHashRpcMessage::new("hash".to_string(), hash))
+        Self::BlockAccount(HashRpcMessage::new(hash))
     }
 }
 

@@ -57,7 +57,7 @@ impl WalletAddArgsBuilder {
 
 #[cfg(test)]
 mod tests {
-    use crate::{RpcCommand, WalletAddArgs};
+    use crate::{wallets::WalletAddArgs, RpcCommand};
     use serde_json::to_string_pretty;
 
     #[test]

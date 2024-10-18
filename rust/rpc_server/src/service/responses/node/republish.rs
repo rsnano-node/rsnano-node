@@ -1,31 +1,24 @@
-use rsnano_core::{BlockHash, PendingKey};
+use rsnano_core::PendingKey;
 use rsnano_node::{Node, NodeExt};
-use rsnano_rpc_messages::{BlockHashesDto, ErrorDto};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{BlockHashesDto, ErrorDto, RepublishArgs, RpcDto};
 use std::sync::Arc;
 use std::time::Duration;
 
-pub async fn republish(
-    node: Arc<Node>,
-    hash: BlockHash,
-    sources: Option<u64>,
-    destinations: Option<u64>,
-    count: Option<u64>,
-) -> String {
+pub async fn republish(node: Arc<Node>, args: RepublishArgs) -> RpcDto {
     let mut blocks = Vec::new();
     let transaction = node.store.tx_begin_read();
-    let count = count.unwrap_or(1024);
+    let count = args.count.unwrap_or(1024);
 
-    if let Some(mut block) = node.ledger.any().get_block(&transaction, &hash) {
+    if let Some(mut block) = node.ledger.any().get_block(&transaction, &args.hash) {
         let mut republish_bundle = Vec::new();
 
         for _ in 0..count {
-            if hash.is_zero() {
+            if args.hash.is_zero() {
                 break;
             }
 
             // Handle sources
-            if let Some(sources_count) = sources {
+            if let Some(sources_count) = args.sources {
                 let source = block
                     .source_field()
                     .or_else(|| block.link_field().map(|link| link.into()))
@@ -52,26 +45,21 @@ pub async fn republish(
 
             // Add the current block
             republish_bundle.push(block.clone());
-            blocks.push(hash);
+            blocks.push(args.hash);
 
             // Handle destinations
-            if let Some(destinations_count) = destinations {
+            if let Some(destinations_count) = args.destinations {
                 if let Some(destination) = block.destination() {
                     if !node
                         .ledger
                         .any()
-                        .get_pending(&transaction, &PendingKey::new(destination, hash))
+                        .get_pending(&transaction, &PendingKey::new(destination, args.hash))
                         .is_some()
                     {
                         let mut previous =
                             match node.ledger.any().account_head(&transaction, &destination) {
                                 Some(block_hash) => block_hash,
-                                None => {
-                                    return to_string_pretty(&ErrorDto::new(
-                                        "Account head not found".to_string(),
-                                    ))
-                                    .unwrap()
-                                }
+                                None => return RpcDto::Error(ErrorDto::AccountHeadNotFound),
                             };
                         let mut dest_block = node.ledger.any().get_block(&transaction, &previous);
                         let mut dest_hashes = Vec::new();
@@ -91,7 +79,7 @@ pub async fn republish(
                                     }
                                 })
                                 .unwrap_or_default();
-                            if hash == source {
+                            if args.hash == source {
                                 break;
                             }
                             previous = db.previous();
@@ -112,7 +100,7 @@ pub async fn republish(
             let next_hash = node
                 .ledger
                 .any()
-                .block_successor(&transaction, &hash)
+                .block_successor(&transaction, &args.hash)
                 .unwrap_or_default();
             if let Some(next_block) = node.ledger.any().get_block(&transaction, &next_hash) {
                 block = next_block;
@@ -129,5 +117,5 @@ pub async fn republish(
         );
     }
 
-    to_string_pretty(&BlockHashesDto::new(blocks)).unwrap()
+    RpcDto::Republish(BlockHashesDto::new(blocks))
 }

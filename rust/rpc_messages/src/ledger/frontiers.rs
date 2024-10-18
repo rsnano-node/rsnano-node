@@ -1,9 +1,22 @@
-use crate::{AccountWithCountArgs, RpcCommand};
+use crate::RpcCommand;
 use rsnano_core::Account;
+use serde::{Deserialize, Serialize};
 
 impl RpcCommand {
     pub fn frontiers(account: Account, count: u64) -> Self {
-        Self::Frontiers(AccountWithCountArgs::new(account, count))
+        Self::Frontiers(FrontiersArgs::new(account, count))
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct FrontiersArgs {
+    pub account: Account,
+    pub count: u64,
+}
+
+impl FrontiersArgs {
+    pub fn new(account: Account, count: u64) -> Self {
+        Self { account, count }
     }
 }
 

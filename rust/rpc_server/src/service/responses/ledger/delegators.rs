@@ -1,10 +1,9 @@
 use rsnano_core::{Account, Amount};
 use rsnano_node::Node;
-use rsnano_rpc_messages::{AccountsWithAmountsDto, DelegatorsArgs};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{DelegatorsArgs, DelegatorsDto, RpcDto};
 use std::{collections::HashMap, sync::Arc};
 
-pub async fn delegators(node: Arc<Node>, args: DelegatorsArgs) -> String {
+pub async fn delegators(node: Arc<Node>, args: DelegatorsArgs) -> RpcDto {
     let representative = args.account;
     let count = args.count.unwrap_or(1024);
     let threshold = args.threshold.unwrap_or(Amount::zero());
@@ -25,9 +24,5 @@ pub async fn delegators(node: Arc<Node>, args: DelegatorsArgs) -> String {
 
         iter.next();
     }
-    to_string_pretty(&AccountsWithAmountsDto::new(
-        "delegators".to_string(),
-        delegators,
-    ))
-    .unwrap()
+    RpcDto::Delegators(DelegatorsDto::new(delegators))
 }

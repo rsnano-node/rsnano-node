@@ -55,23 +55,6 @@ impl WalletChangeSeedArgsBuilder {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct WalletChangeSeedDto {
-    pub success: String,
-    pub last_restored_account: Account,
-    pub restored_count: u32,
-}
-
-impl WalletChangeSeedDto {
-    pub fn new(last_restored_account: Account, restored_count: u32) -> Self {
-        Self {
-            success: String::new(),
-            last_restored_account,
-            restored_count,
-        }
-    }
-}
-
 pub struct WalletWithSeedArgs {
     pub wallet: WalletId,
     pub seed: RawKey,
@@ -92,11 +75,27 @@ impl From<WalletWithSeedArgs> for WalletChangeSeedArgs {
         }
     }
 }
+#[derive(PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct WalletChangeSeedDto {
+    pub success: String,
+    pub last_restored_account: Account,
+    pub restored_count: u32,
+}
+
+impl WalletChangeSeedDto {
+    pub fn new(last_restored_account: Account, restored_count: u32) -> Self {
+        Self {
+            success: String::new(),
+            last_restored_account,
+            restored_count,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rsnano_core::{Account, RawKey, WalletId};
+    use rsnano_core::{RawKey, WalletId};
 
     #[test]
     fn serialize_wallet_change_seed_command() {
@@ -113,32 +112,6 @@ mod tests {
         let deserialized: RpcCommand = serde_json::from_str(&serialized).unwrap();
 
         assert_eq!(command, deserialized);
-    }
-
-    #[test]
-    fn serialize_wallet_change_seed_dto() {
-        let dto = WalletChangeSeedDto::new(Account::zero(), 15);
-
-        let serialized = serde_json::to_string(&dto).unwrap();
-        let deserialized: WalletChangeSeedDto = serde_json::from_str(&serialized).unwrap();
-
-        assert_eq!(dto, deserialized);
-    }
-
-    #[test]
-    fn deserialize_wallet_change_seed_dto() {
-        let json = r#"{"success":"","last_restored_account":"nano_3t6k35gi95xu6tergt6p69ck76ogmitsa8mnijtpxm9fkcm736xtoncuohr3","restored_count":15}"#;
-        let deserialized: WalletChangeSeedDto = serde_json::from_str(json).unwrap();
-
-        assert_eq!(deserialized.success, "");
-        assert_eq!(
-            deserialized.last_restored_account,
-            Account::decode_account(
-                "nano_3t6k35gi95xu6tergt6p69ck76ogmitsa8mnijtpxm9fkcm736xtoncuohr3"
-            )
-            .unwrap()
-        );
-        assert_eq!(deserialized.restored_count, 15);
     }
 
     #[test]
@@ -246,5 +219,21 @@ mod tests {
         assert_eq!(args.wallet, wallet);
         assert_eq!(args.seed, seed);
         assert_eq!(args.count, None);
+    }
+
+    #[test]
+    fn deserialize_wallet_change_seed_dto() {
+        let json = r#"{"success":"","last_restored_account":"nano_3t6k35gi95xu6tergt6p69ck76ogmitsa8mnijtpxm9fkcm736xtoncuohr3","restored_count":15}"#;
+        let deserialized: WalletChangeSeedDto = serde_json::from_str(json).unwrap();
+
+        assert_eq!(deserialized.success, "");
+        assert_eq!(
+            deserialized.last_restored_account,
+            Account::decode_account(
+                "nano_3t6k35gi95xu6tergt6p69ck76ogmitsa8mnijtpxm9fkcm736xtoncuohr3"
+            )
+            .unwrap()
+        );
+        assert_eq!(deserialized.restored_count, 15);
     }
 }

@@ -1,4 +1,3 @@
-mod address_with_port;
 mod block_create;
 mod bootstrap;
 mod bootstrap_any;
@@ -27,7 +26,6 @@ mod work_cancel;
 mod work_generate;
 mod work_validate;
 
-pub use address_with_port::*;
 pub use block_create::*;
 pub use bootstrap::*;
 pub use bootstrap_any::*;
@@ -46,5 +44,6 @@ pub use sign::*;
 pub use unchecked::*;
 pub use unchecked_get::*;
 pub use unchecked_keys::*;
+pub use uptime::*;
 pub use work_generate::*;
 pub use work_validate::*;

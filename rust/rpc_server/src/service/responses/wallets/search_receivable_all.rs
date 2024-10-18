@@ -1,13 +1,12 @@
 use rsnano_node::{Node, NodeExt};
-use rsnano_rpc_messages::{ErrorDto, SuccessDto};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{ErrorDto, RpcDto, SuccessDto};
 use std::sync::Arc;
 
-pub async fn search_receivable_all(node: Arc<Node>, enable_control: bool) -> String {
+pub async fn search_receivable_all(node: Arc<Node>, enable_control: bool) -> RpcDto {
     if enable_control {
         node.search_receivable_all();
-        to_string_pretty(&SuccessDto::new()).unwrap()
+        RpcDto::SearchReceivableAll(SuccessDto::new())
     } else {
-        to_string_pretty(&ErrorDto::new("RPC control is disabled".to_string())).unwrap()
+        RpcDto::Error(ErrorDto::RPCControlDisabled)
     }
 }

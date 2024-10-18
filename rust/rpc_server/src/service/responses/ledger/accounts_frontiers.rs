@@ -1,15 +1,13 @@
-use rsnano_core::Account;
 use rsnano_node::Node;
-use rsnano_rpc_messages::FrontiersDto;
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{AccountsRpcMessage, FrontiersDto, RpcDto};
 use std::{collections::HashMap, sync::Arc};
 
-pub async fn accounts_frontiers(node: Arc<Node>, accounts: Vec<Account>) -> String {
+pub async fn accounts_frontiers(node: Arc<Node>, args: AccountsRpcMessage) -> RpcDto {
     let tx = node.ledger.read_txn();
     let mut frontiers = HashMap::new();
     let mut errors = HashMap::new();
 
-    for account in accounts {
+    for account in args.accounts {
         if let Some(block_hash) = node.ledger.any().account_head(&tx, &account) {
             frontiers.insert(account, block_hash);
         } else {
@@ -22,5 +20,5 @@ pub async fn accounts_frontiers(node: Arc<Node>, accounts: Vec<Account>) -> Stri
         frontiers_dto.errors = Some(errors);
     }
 
-    to_string_pretty(&frontiers_dto).unwrap()
+    RpcDto::AccountsFrontiers(frontiers_dto)
 }

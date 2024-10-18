@@ -12,7 +12,7 @@ fn nano_to_raw() {
         .runtime
         .block_on(async { rpc_client.nano_to_raw(Amount::nano(1)).await.unwrap() });
 
-    assert_eq!(result.value, Amount::raw(1000000000000000000000000000000));
+    assert_eq!(result.amount, Amount::raw(1000000000000000000000000000000));
 
     server.abort();
 }

@@ -1,18 +1,17 @@
 use rsnano_core::{BlockDetails, BlockHash, BlockSubType, BlockType};
 use rsnano_node::Node;
-use rsnano_rpc_messages::{BlockInfoDto, BlocksInfoDto, ErrorDto};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{BlockInfoDto, BlocksInfoDto, ErrorDto, HashesArgs, RpcDto};
 use std::{collections::HashMap, sync::Arc};
 
-pub async fn blocks_info(node: Arc<Node>, hashes: Vec<BlockHash>) -> String {
+pub async fn blocks_info(node: Arc<Node>, args: HashesArgs) -> RpcDto {
     let txn = node.ledger.read_txn();
     let mut blocks_info: HashMap<BlockHash, BlockInfoDto> = HashMap::new();
 
-    for hash in hashes {
+    for hash in args.hashes {
         let block = if let Some(block) = node.ledger.get_block(&txn, &hash) {
             block
         } else {
-            return to_string_pretty(&ErrorDto::new("Block not found".to_string())).unwrap();
+            return RpcDto::Error(ErrorDto::BlockNotFound);
         };
 
         let account = block.account();
@@ -33,7 +32,7 @@ pub async fn blocks_info(node: Arc<Node>, hashes: Vec<BlockHash>) -> String {
             BlockType::LegacyOpen => BlockSubType::Open,
             BlockType::LegacySend => BlockSubType::Send,
             BlockType::LegacyReceive => BlockSubType::Receive,
-            _ => return to_string_pretty(&ErrorDto::new("Block error".to_string())).unwrap(),
+            _ => return RpcDto::Error(ErrorDto::BlockError),
         };
 
         let block_info_dto = BlockInfoDto::new(
@@ -51,5 +50,5 @@ pub async fn blocks_info(node: Arc<Node>, hashes: Vec<BlockHash>) -> String {
         blocks_info.insert(hash, block_info_dto);
     }
 
-    to_string_pretty(&BlocksInfoDto::new(blocks_info)).unwrap()
+    RpcDto::BlocksInfo(BlocksInfoDto::new(blocks_info))
 }

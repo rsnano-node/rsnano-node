@@ -1,10 +1,9 @@
 use rsnano_core::BlockHash;
 use rsnano_node::Node;
-use rsnano_rpc_messages::{BlockHashesDto, ChainArgs};
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{BlockHashesDto, ChainArgs, RpcDto};
 use std::sync::Arc;
 
-pub async fn chain(node: Arc<Node>, args: ChainArgs, successors: bool) -> String {
+pub async fn chain(node: Arc<Node>, args: ChainArgs, successors: bool) -> RpcDto {
     let successors = successors != args.reverse.unwrap_or(false);
     let mut hash = args.block;
     let count = args.count;
@@ -34,5 +33,5 @@ pub async fn chain(node: Arc<Node>, args: ChainArgs, successors: bool) -> String
         }
     }
 
-    to_string_pretty(&BlockHashesDto::new(blocks)).unwrap()
+    RpcDto::Chain(BlockHashesDto::new(blocks))
 }

@@ -1,3 +1,5 @@
+use std::u64;
+
 use rsnano_core::BlockHash;
 use rsnano_rpc_messages::SuccessDto;
 use test_helpers::{assert_timely, setup_rpc_client_and_server, System};
@@ -40,14 +42,8 @@ fn work_cancel() {
 
     let work_handle = node.clone().runtime.spawn(async move {
         node.distributed_work
-            .make(hash.into(), node.network_params.work.base, None)
+            .make(hash.into(), u64::MAX, None)
             .await
-    });
-
-    assert_timely(std::time::Duration::from_millis(100), || {
-        node_clone
-            .runtime
-            .block_on(async { !work_handle.is_finished() })
     });
 
     let result = node_clone

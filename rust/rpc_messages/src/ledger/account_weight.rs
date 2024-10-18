@@ -1,9 +1,21 @@
-use crate::{AccountRpcMessage, RpcCommand};
+use crate::RpcCommand;
 use rsnano_core::Account;
+use serde::{Deserialize, Serialize};
 
 impl RpcCommand {
     pub fn account_weight(account: Account) -> Self {
-        Self::AccountWeight(AccountRpcMessage::new("account".to_string(), account))
+        Self::AccountWeight(AccountWeightArgs::new(account))
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct AccountWeightArgs {
+    pub account: Account,
+}
+
+impl AccountWeightArgs {
+    pub fn new(account: Account) -> Self {
+        Self { account }
     }
 }
 

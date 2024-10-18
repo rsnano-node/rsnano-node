@@ -1,5 +1,5 @@
 use crate::RpcCommand;
-use rsnano_core::{Account, RawKey, WalletId};
+use rsnano_core::{RawKey, WalletId};
 use serde::{Deserialize, Serialize};
 
 impl RpcCommand {
@@ -23,27 +23,19 @@ impl WalletCreateArgs {
 #[derive(PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct WalletCreateDto {
     pub wallet: WalletId,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_restored_account: Option<Account>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub restored_count: Option<u32>,
 }
 
 impl WalletCreateDto {
     pub fn new(wallet: WalletId) -> Self {
-        WalletCreateDto {
-            wallet,
-            last_restored_account: None,
-            restored_count: None,
-        }
+        Self { wallet }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{RpcCommand, WalletCreateDto};
-    use rsnano_core::{Account, RawKey, WalletId};
-    use serde_json::to_string_pretty;
+    use super::*;
+    use rsnano_core::RawKey;
+    use serde_json::{from_str, to_string, to_string_pretty};
 
     #[test]
     fn serialize_wallet_create_command_seed_none() {
@@ -83,49 +75,29 @@ mod tests {
     }
 
     #[test]
-    fn serialize_wallet_create_dto_options_none() {
-        let dto = WalletCreateDto {
-            wallet: WalletId::decode_hex(
-                "5D4570F8CAADE20D021490FF3E525780A380C0C7FD115F5A1EF3B4F4EF1DA03B",
-            )
-            .unwrap(),
-            last_restored_account: None,
-            restored_count: None,
-        };
+    fn serialize_wallet_rpc_message() {
+        let wallet_rpc_message = WalletCreateDto::new(WalletId::zero());
 
-        let serialized = serde_json::to_string_pretty(&dto).unwrap();
-        assert_eq!(
-            serialized,
-            r#"{
-  "wallet": "5D4570F8CAADE20D021490FF3E525780A380C0C7FD115F5A1EF3B4F4EF1DA03B"
-}"#
-        );
+        let serialized = to_string(&wallet_rpc_message).unwrap();
+
+        let expected_json = serde_json::json!({
+            "wallet": "0000000000000000000000000000000000000000000000000000000000000000"
+        });
+
+        let actual_json: serde_json::Value = from_str(&serialized).unwrap();
+        assert_eq!(actual_json, expected_json);
     }
 
     #[test]
-    fn serialize_wallet_create_dto_options_some() {
-        let dto = WalletCreateDto {
-            wallet: WalletId::decode_hex(
-                "5D4570F8CAADE20D021490FF3E525780A380C0C7FD115F5A1EF3B4F4EF1DA03B",
-            )
-            .unwrap(),
-            last_restored_account: Some(
-                Account::decode_account(
-                    "nano_3a1d9fj3kx3zs3worrubd6n1r69xsdapt3ykigfaq35se7agknckjxsqbxzp",
-                )
-                .unwrap(),
-            ),
-            restored_count: Some(1),
-        };
+    fn deserialize_wallet_rpc_message() {
+        let json_str = r#"{
+            "wallet": "0000000000000000000000000000000000000000000000000000000000000000"
+        }"#;
 
-        let serialized = serde_json::to_string_pretty(&dto).unwrap();
-        assert_eq!(
-            serialized,
-            r#"{
-  "wallet": "5D4570F8CAADE20D021490FF3E525780A380C0C7FD115F5A1EF3B4F4EF1DA03B",
-  "last_restored_account": "nano_3a1d9fj3kx3zs3worrubd6n1r69xsdapt3ykigfaq35se7agknckjxsqbxzp",
-  "restored_count": 1
-}"#
-        );
+        let deserialized: WalletCreateDto = from_str(json_str).unwrap();
+
+        let expected = WalletCreateDto::new(WalletId::zero());
+
+        assert_eq!(deserialized, expected);
     }
 }

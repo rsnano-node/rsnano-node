@@ -4,14 +4,13 @@ use rsnano_core::{
 };
 use rsnano_node::Node;
 use rsnano_rpc_messages::{
-    BlockCreateArgs, BlockCreateDto, BlockTypeDto, ErrorDto, WorkVersionDto,
+    BlockCreateArgs, BlockCreateDto, BlockTypeDto, ErrorDto, RpcDto, WorkVersionDto,
 };
-use serde_json::to_string_pretty;
 use std::sync::Arc;
 
-pub async fn block_create(node: Arc<Node>, enable_control: bool, args: BlockCreateArgs) -> String {
+pub async fn block_create(node: Arc<Node>, enable_control: bool, args: BlockCreateArgs) -> RpcDto {
     if !enable_control {
-        return to_string_pretty(&ErrorDto::new("RPC control is disabled".to_string())).unwrap();
+        return RpcDto::Error(ErrorDto::RPCControlDisabled);
     }
 
     let work_version = args.version.unwrap_or(WorkVersionDto::Work1).into();
@@ -31,14 +30,14 @@ pub async fn block_create(node: Arc<Node>, enable_control: bool, args: BlockCrea
     let mut balance = args.balance.unwrap_or(Amount::zero());
     let mut prv_key = RawKey::default();
 
-    if work.is_none() && !node.distributed_work.work_generation_enabled() {
+    /*if work.is_none() && !node.distributed_work.work_generation_enabled() {
         return to_string_pretty(&ErrorDto::new("Work generation is disabled".to_string()))
             .unwrap();
-    }
+    }*/
 
     if let (Some(wallet_id), Some(account)) = (wallet, account) {
         if let Err(e) = node.wallets.fetch(&wallet_id, &account.into()) {
-            return to_string_pretty(&ErrorDto::new(e.to_string())).unwrap();
+            return RpcDto::Error(ErrorDto::WalletsError(e));
         }
         let tx = node.ledger.read_txn();
         previous = node.ledger.any().account_head(&tx, &account).unwrap();
@@ -49,21 +48,18 @@ pub async fn block_create(node: Arc<Node>, enable_control: bool, args: BlockCrea
         prv_key = key;
     }
 
-    if prv_key.is_zero() {
-        return to_string_pretty(&ErrorDto::new("Block create key required".to_string())).unwrap();
-    }
+    //if prv_key.is_zero() {
+    //return to_string_pretty(&ErrorDto::new("Block create key required".to_string())).unwrap();
+    //}
 
     let pub_key: PublicKey = (&prv_key).try_into().unwrap();
     let pub_key: Account = pub_key.into();
 
-    if let Some(account) = account {
+    /*if let Some(account) = account {
         if account != pub_key {
-            return to_string_pretty(&ErrorDto::new(
-                "Block create public key mismatch".to_string(),
-            ))
-            .unwrap();
+            return RpcDto::Error(BlockDto(ErrorDto2::BlockRootMismatch))
         }
-    }
+    }*/
 
     let key_pair: KeyPair = prv_key.into();
 
@@ -82,7 +78,7 @@ pub async fn block_create(node: Arc<Node>, enable_control: bool, args: BlockCrea
                     .sign(&key_pair)
                     .build()
             } else {
-                return to_string_pretty(&ErrorDto::new("Invalid block type".to_string())).unwrap();
+                return RpcDto::Error(ErrorDto::BlockError);
             }
         }
         BlockTypeDto::Open => {
@@ -95,7 +91,7 @@ pub async fn block_create(node: Arc<Node>, enable_control: bool, args: BlockCrea
                     .sign(&key_pair)
                     .build()
             } else {
-                return to_string_pretty(&ErrorDto::new("Invalid block type".to_string())).unwrap();
+                return RpcDto::Error(ErrorDto::BlockError);
             }
         }
         BlockTypeDto::Receive => {
@@ -107,7 +103,7 @@ pub async fn block_create(node: Arc<Node>, enable_control: bool, args: BlockCrea
                     .sign(&key_pair)
                     .build()
             } else {
-                return to_string_pretty(&ErrorDto::new("Invalid block type".to_string())).unwrap();
+                return RpcDto::Error(ErrorDto::BlockError);
             }
         }
         BlockTypeDto::Change => {
@@ -119,7 +115,7 @@ pub async fn block_create(node: Arc<Node>, enable_control: bool, args: BlockCrea
                     .sign(&key_pair)
                     .build()
             } else {
-                return to_string_pretty(&ErrorDto::new("Invalid block type".to_string())).unwrap();
+                return RpcDto::Error(ErrorDto::BlockError);
             }
         }
         BlockTypeDto::Send => {
@@ -134,11 +130,10 @@ pub async fn block_create(node: Arc<Node>, enable_control: bool, args: BlockCrea
                         .sign(key_pair)
                         .build()
                 } else {
-                    return to_string_pretty(&ErrorDto::new("Insufficient balance".to_string()))
-                        .unwrap();
+                    return RpcDto::Error(ErrorDto::InsufficientBalance);
                 }
             } else {
-                return to_string_pretty(&ErrorDto::new("Invalid block type".to_string())).unwrap();
+                return RpcDto::Error(ErrorDto::BlockError);
             }
         }
     };
@@ -162,10 +157,7 @@ pub async fn block_create(node: Arc<Node>, enable_control: bool, args: BlockCrea
             .await
         {
             Some(work) => work,
-            None => {
-                return to_string_pretty(&ErrorDto::new("Failed to generate work".to_string()))
-                    .unwrap()
-            }
+            None => return RpcDto::Error(ErrorDto::InsufficientWork),
         };
         block.set_work(work);
     } else {
@@ -176,7 +168,7 @@ pub async fn block_create(node: Arc<Node>, enable_control: bool, args: BlockCrea
     let difficulty = block.work();
     let json_block = block.json_representation();
 
-    to_string_pretty(&BlockCreateDto::new(hash, difficulty.into(), json_block)).unwrap()
+    RpcDto::BlockCreate(BlockCreateDto::new(hash, difficulty.into(), json_block))
 }
 
 pub fn difficulty_ledger(node: Arc<Node>, block: &BlockEnum) -> u64 {

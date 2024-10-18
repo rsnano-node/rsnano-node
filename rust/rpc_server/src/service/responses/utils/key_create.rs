@@ -1,12 +1,11 @@
 use rsnano_core::{Account, KeyPair};
-use rsnano_rpc_messages::KeyPairDto;
-use serde_json::to_string_pretty;
+use rsnano_rpc_messages::{KeyPairDto, RpcDto};
 
-pub async fn key_create() -> String {
+pub async fn key_create() -> RpcDto {
     let keypair = KeyPair::new();
     let private = keypair.private_key();
     let public = keypair.public_key();
     let account = Account::from(public);
 
-    to_string_pretty(&KeyPairDto::new(private, public, account)).unwrap()
+    RpcDto::KeyPair(KeyPairDto::new(private, public, account))
 }

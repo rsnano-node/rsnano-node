@@ -1,4 +1,4 @@
-use crate::{RpcCommand, WalletWithCountArgs};
+use crate::{common::WalletWithCountArgs, RpcCommand};
 use rsnano_core::WalletId;
 use serde::{Deserialize, Serialize};
 
