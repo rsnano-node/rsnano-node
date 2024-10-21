@@ -32,6 +32,12 @@ impl NanoRpcClient {
         Ok(serde_json::from_value(result)?)
     }
 
+    pub async fn work_peers(&self) -> Result<WorkPeersDto> {
+        let cmd = RpcCommand::work_peers();
+        let result = self.rpc_request(&cmd).await?;
+        Ok(serde_json::from_value(result)?)
+    }
+
     pub async fn block_create(&self, block_create_args: BlockCreateArgs) -> Result<BlockCreateDto> {
         let cmd = RpcCommand::block_create(block_create_args);
         let result = self.rpc_request(&cmd).await?;

@@ -19,6 +19,7 @@ use rsnano_core::{
     Account, Amount, PublicKey, GXRB_RATIO, XRB_RATIO,
 };
 use rsnano_store_lmdb::LmdbConfig;
+use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
 use std::{cmp::max, fmt, net::Ipv6Addr, str::FromStr, time::Duration};
 
 #[repr(u8)]
@@ -112,7 +113,7 @@ pub struct NodeConfig {
     pub monitor: MonitorConfig,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Peer {
     pub address: String,
     pub port: u16,
@@ -387,6 +388,61 @@ impl Default for MonitorConfig {
         Self {
             enabled: true,
             interval: Duration::from_secs(60),
+        }
+    }
+}
+
+impl Serialize for Peer {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for Peer {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(D::Error::custom)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+
+    #[test]
+    fn test_peer_serialize() {
+        let peer = Peer::new("192.168.1.1", 7075);
+        let serialized = serde_json::to_string(&peer).unwrap();
+        assert_eq!(serialized, "\"192.168.1.1:7075\"");
+    }
+
+    #[test]
+    fn test_peer_deserialize() {
+        let serialized = "\"192.168.1.1:7075\"";
+        let peer: Peer = serde_json::from_str(serialized).unwrap();
+        assert_eq!(peer, Peer::new("192.168.1.1", 7075));
+    }
+
+    #[test]
+    fn test_peer_invalid_deserialize() {
+        let invalid_inputs = vec![
+            "\"invalid\"",
+            "\"192.168.1.1\"",
+            "\"192.168.1.1:\"",
+            "\"192.168.1.1:abc\"",
+            "\"192.168.1.1:65536\"",
+        ];
+
+        for input in invalid_inputs {
+            let result: Result<Peer, _> = serde_json::from_str(input);
+            assert!(result.is_err(), "Expected error for input: {}", input);
         }
     }
 }
