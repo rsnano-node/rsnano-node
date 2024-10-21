@@ -1,11 +1,12 @@
-use crate::{serialize_32_byte_string, u256_struct};
+use crate::{serialize_32_byte_string, u256_struct_zeroize};
 use ctr::cipher::{KeyIvInit, StreamCipher};
 use rand::{thread_rng, Rng};
 use std::ops::BitXorAssign;
+use zeroize::Zeroize;
 
 type Aes256Ctr = ctr::Ctr64BE<aes::Aes256>;
 
-u256_struct!(RawKey);
+u256_struct_zeroize!(RawKey);
 serialize_32_byte_string!(RawKey);
 
 impl RawKey {

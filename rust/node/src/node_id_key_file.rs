@@ -211,7 +211,7 @@ mod tests {
 
     fn initialize_node_id_without_existing_file() -> (anyhow::Result<KeyPair>, Vec<FsEvent>) {
         let fs = NullableFilesystem::new_null();
-        let key_pair_factory = KeyPairFactory::new_null_with(EXPECTED_KEY);
+        let key_pair_factory = KeyPairFactory::new_null_with(EXPECTED_KEY.clone());
         initialize_node_id(fs, key_pair_factory)
     }
 

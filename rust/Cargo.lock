@@ -3719,6 +3719,7 @@ dependencies = [
  "serde",
  "serde_json",
  "static_assertions",
+ "zeroize",
 ]
 
 [[package]]

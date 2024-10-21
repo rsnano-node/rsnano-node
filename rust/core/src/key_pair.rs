@@ -246,7 +246,7 @@ mod tests {
         #[test]
         fn configured_response() {
             let expected = RawKey::from_bytes([3; 32]);
-            let mut key_pair_factory = KeyPairFactory::new_null_with(expected);
+            let mut key_pair_factory = KeyPairFactory::new_null_with(expected.clone());
             assert_eq!(key_pair_factory.create_key_pair().private_key(), expected);
         }
     }

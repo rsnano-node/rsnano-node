@@ -43,7 +43,7 @@ mod tests {
     #[test]
     fn reconstitute_fan() {
         let value0 = RawKey::from_bytes([0; 32]);
-        let fan = Fan::new(value0, 1024);
+        let fan = Fan::new(value0.clone(), 1024);
         for i in fan.values.iter() {
             assert_ne!(i.as_ref(), &value0);
         }
@@ -55,10 +55,10 @@ mod tests {
     fn change_fan() {
         let value0 = RawKey::from_bytes([0; 32]);
         let value1 = RawKey::from_bytes([1; 32]);
-        let mut fan = Fan::new(value0, 1024);
+        let mut fan = Fan::new(value0.clone(), 1024);
         assert_eq!(fan.values.len(), 1024);
         assert_eq!(fan.value(), value0);
-        fan.value_set(value1);
+        fan.value_set(value1.clone());
         assert_eq!(fan.value(), value1);
     }
 }
