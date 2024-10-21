@@ -24,6 +24,7 @@ mod unchecked_keys;
 mod uptime;
 mod work_cancel;
 mod work_generate;
+mod work_peer_add;
 mod work_validate;
 
 pub use block_create::*;
