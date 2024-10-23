@@ -9,7 +9,8 @@ use rsnano_core::{
     Signature,
 };
 use serde::ser::SerializeStruct;
-use serde_derive::Serialize;
+use serde::{Deserializer, Serializer};
+use serde_derive::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::mem::size_of;
 use std::time::{Duration, SystemTime};
@@ -23,7 +24,7 @@ pub enum TelemetryMaker {
     RsNano = 3,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Serialize)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct TelemetryData {
     pub signature: Signature,
     pub node_id: PublicKey,
@@ -41,10 +42,44 @@ pub struct TelemetryData {
     pub patch_version: u8,
     pub pre_release_version: u8,
     pub maker: u8, // Where this telemetry information originated
-    #[serde(skip)] // TODO find a way to serialize the timestamp
+    #[serde(
+        serialize_with = "serialize_timestamp",
+        deserialize_with = "deserialize_timestamp"
+    )]
     pub timestamp: SystemTime,
     pub active_difficulty: u64,
     pub unknown_data: Vec<u8>,
+}
+
+fn serialize_timestamp<S>(timestamp: &SystemTime, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let duration = timestamp
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default();
+    let seconds = duration.as_secs();
+    let nanos = duration.subsec_nanos();
+    let mut state = serializer.serialize_struct("SystemTime", 2)?;
+    state.serialize_field("secs", &seconds)?;
+    state.serialize_field("nanos", &nanos)?;
+    state.end()
+}
+
+fn deserialize_timestamp<'de, D>(deserializer: D) -> Result<SystemTime, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    struct Helper {
+        secs: u64,
+        nanos: u32,
+    }
+
+    use serde::Deserialize;
+
+    let Helper { secs, nanos } = Helper::deserialize(deserializer)?;
+    Ok(SystemTime::UNIX_EPOCH + Duration::new(secs, nanos))
 }
 
 impl TelemetryData {
@@ -108,7 +143,7 @@ impl TelemetryData {
           + size_of::<u64>() //active_difficulty)
     }
 
-    fn serialize_without_signature(&self, writer: &mut dyn BufferWriter) {
+    pub fn serialize_without_signature(&self, writer: &mut dyn BufferWriter) {
         // All values should be serialized in big endian
         self.node_id.serialize(writer);
         writer.write_u64_be_safe(self.block_count);
@@ -350,6 +385,7 @@ impl Display for TelemetryData {
 mod tests {
     use super::*;
     use crate::{assert_deserializable, Message};
+    use std::thread::sleep;
 
     #[test]
     fn serialized_size() {
@@ -394,6 +430,43 @@ mod tests {
         ];
 
         assert_deserializable(&Message::TelemetryAck(TelemetryAck(Some(data))));
+    }
+
+    #[test]
+    fn test_timestamp_accuracy() {
+        let before = SystemTime::now();
+        sleep(Duration::from_millis(10)); // Small delay to ensure time passes
+
+        let mut telemetry_data = TelemetryData::new();
+        telemetry_data.timestamp = SystemTime::now();
+
+        sleep(Duration::from_millis(10)); // Another small delay
+        let after = SystemTime::now();
+
+        // Check that the timestamp is between 'before' and 'after'
+        assert!(telemetry_data.timestamp >= before);
+        assert!(telemetry_data.timestamp <= after);
+
+        // Serialize and deserialize to ensure accuracy is maintained
+        let json = serde_json::to_string(&telemetry_data).unwrap();
+        let deserialized: TelemetryData = serde_json::from_str(&json).unwrap();
+
+        // Check that the deserialized timestamp is still accurate
+        assert!(deserialized.timestamp >= before);
+        assert!(deserialized.timestamp <= after);
+
+        // Check that the original and deserialized timestamps are equal
+        assert_eq!(telemetry_data.timestamp, deserialized.timestamp);
+
+        // Print time differences for manual verification
+        println!(
+            "Time from 'before' to timestamp: {:?}",
+            telemetry_data.timestamp.duration_since(before).unwrap()
+        );
+        println!(
+            "Time from timestamp to 'after': {:?}",
+            after.duration_since(telemetry_data.timestamp).unwrap()
+        );
     }
 
     fn test_data(keys: &KeyPair) -> TelemetryData {

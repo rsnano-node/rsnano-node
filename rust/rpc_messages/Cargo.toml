@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 rsnano_core = { path = "../core" }
+rsnano_messages = { path = "../messages" }
 rsnano_node = { path = "../node" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.72"

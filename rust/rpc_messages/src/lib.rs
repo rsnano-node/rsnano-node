@@ -22,6 +22,7 @@ pub enum RpcCommand {
     Receive(ReceiveArgs),
     Send(SendArgs),
     WalletAdd(WalletAddArgs),
+    Telemetry(TelemetryArgs),
     AccountCreate(AccountCreateArgs),
     AccountBalance(AccountBalanceArgs),
     AccountsCreate(AccountsCreateArgs),
@@ -209,4 +210,5 @@ pub enum RpcDto {
     WorkGenerate(WorkGenerateDto),
     Republish(BlockHashesDto),
     BlockCreate(BlockCreateDto),
+    Telemetry(TelemetryDtos),
 }
