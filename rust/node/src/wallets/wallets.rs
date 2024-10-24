@@ -77,7 +77,7 @@ pub struct Wallets {
     ledger: Arc<Ledger>,
     last_log: Mutex<Option<Instant>>,
     distributed_work: Arc<DistributedWorkFactory>,
-    work_thresholds: WorkThresholds,
+    pub work_thresholds: WorkThresholds,
     network_params: NetworkParams,
     pub delayed_work: Mutex<HashMap<Account, Root>>,
     workers: Arc<dyn ThreadPool>,

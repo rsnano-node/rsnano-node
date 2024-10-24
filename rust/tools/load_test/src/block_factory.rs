@@ -1,6 +1,6 @@
 use anyhow::Result;
 use rand::Rng;
-use rsnano_core::{Account, WalletId};
+use rsnano_core::{Account, Amount, WalletId};
 use rsnano_ledger::DEV_GENESIS_ACCOUNT;
 use rsnano_rpc_client::NanoRpcClient;
 use rsnano_rpc_messages::{AccountInfoDto, KeyPairDto};
@@ -101,6 +101,7 @@ impl BlockFactory {
                 self.wallet,
                 *DEV_GENESIS_ACCOUNT,
                 destination_account.account,
+                Amount::raw(1),
             )
             .await;
         self.send_calls_remaining.fetch_sub(1, Ordering::SeqCst);

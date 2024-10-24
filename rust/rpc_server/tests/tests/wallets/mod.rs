@@ -6,6 +6,7 @@ mod accounts_create;
 mod password_change;
 mod password_enter;
 mod password_valid;
+mod receive;
 mod receive_minimum;
 mod search_receivable;
 mod search_receivable_all;

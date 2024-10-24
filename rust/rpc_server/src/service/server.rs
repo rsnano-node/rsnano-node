@@ -1,3 +1,4 @@
+use super::receive;
 use super::{
     account_balance, account_block_count, account_create, account_get, account_history,
     account_info, account_key, account_list, account_move, account_remove, account_representative,
@@ -67,6 +68,9 @@ async fn handle_rpc(
     Json(rpc_command): Json<RpcCommand>,
 ) -> Response {
     let response = match rpc_command {
+        RpcCommand::Receive(args) => {
+            receive(rpc_service.node, rpc_service.enable_control, args).await
+        }
         RpcCommand::AccountCreate(args) => {
             account_create(rpc_service.node, rpc_service.enable_control, args).await
         }
@@ -224,7 +228,6 @@ async fn handle_rpc(
         RpcCommand::BlockCreate(args) => {
             block_create(rpc_service.node, rpc_service.enable_control, args).await
         }
-        _ => todo!(),
     };
 
     (StatusCode::OK, to_string_pretty(&response).unwrap()).into_response()

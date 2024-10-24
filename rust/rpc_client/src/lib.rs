@@ -1,5 +1,5 @@
 use crate::AccountBalanceDto;
-use anyhow::{bail, Result};
+use anyhow::{bail, Ok, Result};
 use reqwest::Client;
 pub use reqwest::Url;
 use rsnano_core::{
@@ -7,7 +7,7 @@ use rsnano_core::{
 };
 use rsnano_rpc_messages::*;
 use serde::Serialize;
-use serde_json::{from_str, from_value, Value};
+use serde_json::{from_value, Value};
 use std::{net::Ipv6Addr, time::Duration};
 
 pub struct NanoRpcClient {
@@ -648,19 +648,10 @@ impl NanoRpcClient {
         Ok(from_value(result)?)
     }
 
-    pub async fn receive_block(
-        &self,
-        wallet: WalletId,
-        destination: Account,
-        block: impl Into<JsonBlock>,
-    ) -> Result<()> {
-        let request = RpcCommand::Receive(ReceiveArgs {
-            wallet,
-            account: destination,
-            block: block.into(),
-        });
-        self.rpc_request(&request).await?;
-        Ok(())
+    pub async fn receive(&self, args: ReceiveArgs) -> Result<BlockDto> {
+        let request = RpcCommand::Receive(args);
+        let result = self.rpc_request(&request).await?;
+        Ok(serde_json::from_value(result)?)
     }
 
     pub async fn send(&self, args: SendArgs) -> Result<BlockDto> {
@@ -669,33 +660,18 @@ impl NanoRpcClient {
         Ok(serde_json::from_value(result)?)
     }
 
-    pub async fn send_block(
-        &self,
-        wallet: WalletId,
-        source: Account,
-        destination: Account,
-    ) -> Result<JsonBlock> {
-        let request = RpcCommand::send(SendArgs {
-            wallet,
-            source,
-            destination,
-            amount: Amount::raw(1),
-            work: None,
-            id: None,
-        });
-        let json = self.rpc_request(&request).await?;
-        let block = json["block"].as_str().unwrap().to_owned();
-        Ok(from_str(&block)?)
-    }
-
     pub async fn send_receive(
         &self,
         wallet: WalletId,
         source: Account,
         destination: Account,
+        amount: Amount,
     ) -> Result<()> {
-        let block = self.send_block(wallet, source, destination).await?;
-        self.receive_block(wallet, destination, block).await
+        let send_args = SendArgs::builder(wallet, source, destination, amount).build();
+        let block = self.send(send_args).await?;
+        let receive_args = ReceiveArgs::builder(wallet, destination, block.block).build();
+        let _ = self.receive(receive_args).await;
+        Ok(())
     }
 
     pub async fn keepalive(&self, address: Ipv6Addr, port: u16) -> Result<StartedDto> {

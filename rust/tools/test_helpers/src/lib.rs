@@ -25,6 +25,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tracing_subscriber::EnvFilter;
+
 pub struct System {
     runtime: Arc<AsyncRuntime>,
     network_params: NetworkParams,

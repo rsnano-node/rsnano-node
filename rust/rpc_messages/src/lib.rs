@@ -209,4 +209,5 @@ pub enum RpcDto {
     WorkGenerate(WorkGenerateDto),
     Republish(BlockHashesDto),
     BlockCreate(BlockCreateDto),
+    Receive(BlockDto),
 }
