@@ -18,6 +18,8 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET
     13.3
     CACHE STRING "")
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 project(nano-node)
 
 # Group targets into folders in IDEs
