@@ -20,11 +20,11 @@ RsNano is a Rust port of the original Nano node.
 
 ## Option 1: Run the official docker image
 
-    docker run -p 7075:7075 -v ~/Nano:/root/Nano simpago/rsnano-dev:latest --network=live node run
+    docker run -p 7075:7075 -v ~/Nano:/root/Nano simpago/rsnano:V1.0 --network=live node run
 
 ## Option 2: Build your own docker image
 
-    docker build -f scripts/docker/node/Dockerfile -t rsnano-node https://github.com/simpago/rsnano-node.git#develop
+    docker build -f scripts/docker/node/Dockerfile -t rsnano-node https://github.com/simpago/rsnano-node.git#releases/v1
 
     docker run -p 7075:7075 -v ~/Nano:/root/Nano rsnano-node:latest --network=live node run
 
@@ -35,6 +35,7 @@ Currently you can only build RsNano on Linux and on Mac.
 To just build and run the rsnano_node:
 
     git clone https://github.com/simpago/rsnano-node.git
+    git switch releases/v1
     cd rsnano-node/main
     cargo build --release
     cargo run --release -- --network=live node run
@@ -42,6 +43,7 @@ To just build and run the rsnano_node:
 To install and run the rsnano_node executable:
 
     git clone https://github.com/simpago/rsnano-node.git
+    git switch releases/v1
     cd rsnano-node
     cargo install --path main
     rsnano_node --network=live node run
