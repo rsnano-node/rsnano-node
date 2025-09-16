@@ -1,10 +1,10 @@
-use std::sync::{Arc, Mutex};
+use crate::{ledger_snapshots::Aggregator, representatives::OnlineReps, transport::MessageFlooder};
 use rsnano_ledger::Ledger;
 use rsnano_messages::{Message, Preproposal, Proposal};
 use rsnano_network::TrafficType;
 use rsnano_output_tracker::{OutputListenerMt, OutputTrackerMt};
 use rsnano_types::{Account, BlockHash, PrivateKey};
-use crate::{ledger_snapshots::Aggregator, representatives::OnlineReps, transport::MessageFlooder};
+use std::sync::{Arc, Mutex};
 
 pub struct Preconsensus {
     ledger: Arc<Ledger>,
@@ -19,22 +19,29 @@ pub struct Preconsensus {
 }
 
 impl Preconsensus {
-    pub fn new(ledger: Arc<Ledger>, get_private_key: Arc<dyn Fn() -> Option<PrivateKey> + Send + Sync>, 
+    pub fn new(
+        ledger: Arc<Ledger>,
+        get_private_key: Arc<dyn Fn() -> Option<PrivateKey> + Send + Sync>,
         flooder: Arc<Mutex<MessageFlooder>>,
-        online_reps: Arc<Mutex<OnlineReps>>, 
-        ) -> Self {
-        Self { 
+        online_reps: Arc<Mutex<OnlineReps>>,
+    ) -> Self {
+        Self {
             ledger,
-            get_private_key, 
-            flooder, 
-            online_reps, 
-            receive_preproposal_listener: OutputListenerMt::default(), 
-            preproposal_aggregator: Default::default(), 
+            get_private_key,
+            flooder,
+            online_reps,
+            receive_preproposal_listener: OutputListenerMt::default(),
+            preproposal_aggregator: Default::default(),
         }
     }
 
     pub fn new_null() -> Self {
-        Self::new(Ledger::new_null().into(), Arc::new(|| None), Mutex::new(MessageFlooder::new_null()).into(), Mutex::new(OnlineReps::new_test_instance()).into())
+        Self::new(
+            Ledger::new_null().into(),
+            Arc::new(|| None),
+            Mutex::new(MessageFlooder::new_null()).into(),
+            Mutex::new(OnlineReps::new_test_instance()).into(),
+        )
     }
 
     fn collect_frontiers(&self) -> Vec<(Account, BlockHash)> {
@@ -93,11 +100,15 @@ impl Preconsensus {
 }
 
 mod tests {
-    use rsnano_messages::Aggregatable;
-    use rsnano_types::{AccountInfo, ConfirmationHeightInfo};
-    use crate::transport::FloodEvent;
-
     use super::*;
+    use crate::{
+        representatives::{ConsensusParams, ONLINE_WEIGHT_QUORUM},
+        transport::FloodEvent,
+    };
+    use rsnano_ledger::RepWeights;
+    use rsnano_messages::Aggregatable;
+    use rsnano_types::{AccountInfo, Amount, ConfirmationHeightInfo};
+    use std::time::Duration;
 
     #[test]
     fn ledger_with_one_account() {
@@ -114,7 +125,8 @@ mod tests {
         let account2 = Account::from(2);
         let frontier2 = BlockHash::from(200);
 
-        let preconsensus = create_preconsensus_with_frontiers([(account1, frontier1), (account2, frontier2)]);
+        let preconsensus =
+            create_preconsensus_with_frontiers([(account1, frontier1), (account2, frontier2)]);
         assert_eq!(
             preconsensus.collect_frontiers(),
             [(account1, frontier1), (account2, frontier2)]
@@ -144,8 +156,7 @@ mod tests {
         let flood_events = flood_tracker.output();
         assert_eq!(flood_events.len(), 1, "Should flood the message");
 
-        let expected_preproposal = preconsensus
-            .create_preproposal(&get_private_key().unwrap());
+        let expected_preproposal = preconsensus.create_preproposal(&get_private_key().unwrap());
 
         assert_eq!(
             flood_events[0],
@@ -169,7 +180,7 @@ mod tests {
         preconsensus.receive_preproposal(preproposal.clone());
 
         let receive_events: Vec<Preproposal> = receive_preproposal_tracker.output();
-        
+
         assert_eq!(receive_events.len(), 1, "Should receive preproposal");
         assert_eq!(receive_events[0], preproposal);
     }
@@ -187,6 +198,41 @@ mod tests {
                 .lock()
                 .unwrap()
                 .contains(&preproposal.hash())
+        );
+    }
+
+    #[test]
+    fn publish_proposal_when_quorum_of_preproposals_is_reached() {
+        let mut rep_weights = RepWeights::new();
+        let private_key = get_private_key().unwrap();
+        let quorum_weight = Amount::nano(100_000);
+
+        rep_weights.insert(private_key.public_key(), quorum_weight);
+        let params = ConsensusParams {
+            rep_weights,
+            quorum_weight,
+        };
+        let preconsensus = create_preconsensus_with_params(&params);
+
+        let preproposal = Preproposal::new(vec![], &private_key);
+        let flood_tracker: Arc<OutputTrackerMt<FloodEvent>> =
+            preconsensus.flooder.lock().unwrap().track_floods();
+
+        preconsensus.receive_preproposal(preproposal.clone());
+
+        let flood_events = flood_tracker.output();
+        assert_eq!(flood_events.len(), 1, "Should flood the message");
+
+        let expected_proposal = Proposal::new(&[preproposal], &private_key);
+
+        assert_eq!(
+            flood_events[0],
+            FloodEvent {
+                message: Message::SnapshotProposal(expected_proposal),
+                traffic_type: TrafficType::LedgerSnapshots,
+                scale: 0.0,
+                all_prs: true,
+            }
         );
     }
 
@@ -209,7 +255,30 @@ mod tests {
 
         let ledger = builder.finish().into();
 
-        Preconsensus::new(ledger, Arc::new(get_private_key), Mutex::new(MessageFlooder::new_null()).into(), Mutex::new(OnlineReps::new_test_instance()).into())
+        Preconsensus::new(
+            ledger,
+            Arc::new(get_private_key),
+            Mutex::new(MessageFlooder::new_null()).into(),
+            Mutex::new(OnlineReps::new_test_instance()).into(),
+        )
+    }
+
+    fn create_preconsensus_with_params(params: &ConsensusParams) -> Preconsensus {
+        let mut online_reps = OnlineReps::new(
+            Arc::new(params.rep_weights.clone().into()),
+            Duration::ZERO,
+            Amount::ZERO,
+            Amount::ZERO,
+        );
+        online_reps.set_trended(params.quorum_weight / ONLINE_WEIGHT_QUORUM as u128 * 100);
+        let online_reps = Arc::new(Mutex::new(online_reps));
+
+        Preconsensus::new(
+            Ledger::new_null().into(),
+            Arc::new(get_private_key),
+            Mutex::new(MessageFlooder::new_null()).into(),
+            online_reps,
+        )
     }
 
     fn get_private_key() -> Option<PrivateKey> {

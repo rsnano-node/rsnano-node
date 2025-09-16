@@ -105,15 +105,15 @@ mod tests {
         let weight = Amount::nano(10_000);
         let mut rep_weights = RepWeights::new();
         rep_weights.insert(rep_key.public_key(), weight);
-        let consensus_params = ConsensusParams { rep_weights, quorum_weight: Amount::MAX };
+        let consensus_params = ConsensusParams {
+            rep_weights,
+            quorum_weight: Amount::MAX,
+        };
 
         let mut aggregator = Aggregator::default();
         aggregator.add(Preproposal::new(Vec::new(), &rep_key));
 
-        assert_eq!(
-            aggregator.has_quorum(&consensus_params),
-            false
-        );
+        assert_eq!(aggregator.has_quorum(&consensus_params), false);
     }
 
     #[test]
@@ -129,17 +129,17 @@ mod tests {
         rep_weights.insert(rep_key2.public_key(), weight2);
 
         let mut aggregator = Aggregator::default();
-        let consensus_params = ConsensusParams { rep_weights, quorum_weight };
+        let consensus_params = ConsensusParams {
+            rep_weights,
+            quorum_weight,
+        };
 
         let preproposal1 = Preproposal::new(test_frontiers(), &rep_key1);
         aggregator.add(preproposal1.clone());
         let preproposal2 = Preproposal::new(test_frontiers(), &rep_key2);
         aggregator.add(preproposal2.clone());
 
-        assert_eq!(
-            aggregator.has_quorum(&consensus_params),
-            true
-        );
+        assert_eq!(aggregator.has_quorum(&consensus_params), true);
     }
 
     fn test_frontiers() -> Vec<(Account, BlockHash)> {

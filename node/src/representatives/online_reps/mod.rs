@@ -292,7 +292,10 @@ impl OnlineReps {
     pub fn get_consensus_params(&self) -> ConsensusParams {
         let rep_weights = self.get_rep_weights();
         let quorum_weight = self.quorum_delta();
-        ConsensusParams { rep_weights, quorum_weight }
+        ConsensusParams {
+            rep_weights,
+            quorum_weight,
+        }
     }
 }
 
