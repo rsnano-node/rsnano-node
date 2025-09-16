@@ -1,103 +1,135 @@
-use std::collections::HashMap;
+use rsnano_messages::Aggregatable;
+use rsnano_types::{Amount, Blake2Hash, PublicKey};
+use std::collections::{HashMap, HashSet};
 
-use crate::ledger_snapshots::Aggregator;
-use rsnano_ledger::RepWeights;
-use rsnano_messages::{Aggregatable, ProposalHash, ProposalVote};
-use rsnano_types::Amount;
+use crate::representatives::ConsensusParams;
 
-pub(crate) struct ConsensusParams {
-    pub(crate) rep_weights: RepWeights,
-    pub(crate) quorum_weight: Amount,
+pub(super) struct Aggregator<T: Aggregatable> {
+    values: HashMap<Blake2Hash, T>,
+    signers: HashSet<PublicKey>,
 }
 
-impl Default for ConsensusParams {
+impl<T: Aggregatable> Default for Aggregator<T> {
     fn default() -> Self {
         Self {
-            rep_weights: Default::default(),
-            quorum_weight: Amount::MAX,
+            values: Default::default(),
+            signers: Default::default(),
         }
     }
 }
 
-impl ConsensusParams {
-    pub(crate) fn set_rep_weights(&mut self, rep_weights: RepWeights, quorum_weight: Amount) {
-        self.rep_weights = rep_weights;
-        self.quorum_weight = quorum_weight;
-    }
-}
-
-/// Quorum is reached if all received valid values have 67% vote weight in sum
-pub(crate) fn has_quantitative_quorum<T: Aggregatable>(
-    params: &ConsensusParams,
-    aggregator: &Aggregator<T>,
-) -> bool {
-    let mut weight = Amount::ZERO;
-    for value in aggregator.values() {
-        weight += params.rep_weights.weight(&value.signer());
-    }
-    weight >= params.quorum_weight
-}
-
-pub(crate) fn find_winner_proposal<'a>(
-    params: &ConsensusParams,
-    votes: impl IntoIterator<Item = &'a ProposalVote>,
-) -> Option<ProposalHash> {
-    let mut tallies: HashMap<ProposalHash, Amount> = HashMap::new();
-
-    for vote in votes {
-        let weight = tallies.entry(vote.proposal_hash).or_default();
-        *weight += params.rep_weights.weight(&vote.voter);
+impl<T: Aggregatable> Aggregator<T> {
+    pub fn len(&self) -> usize {
+        self.values.len()
     }
 
-    tallies
-        .into_iter()
-        .find(|(p, w)| *w >= params.quorum_weight)
-        .map(|(p, w)| p)
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
+
+    pub fn contains(&self, hash: &Blake2Hash) -> bool {
+        self.values.contains_key(hash)
+    }
+
+    pub fn add(&mut self, value: T) {
+        if self.signers.insert(value.signer()) {
+            self.values.insert(value.hash(), value);
+        }
+    }
+
+    pub(crate) fn values(&self) -> impl Iterator<Item = &T> {
+        self.values.values()
+    }
+
+    /// Quorum is achieved when the combined vote weight of all received valid values reaches at least 67%
+    pub(crate) fn has_quorum(&self, consensus_params: &ConsensusParams) -> bool {
+        let mut weight = Amount::ZERO;
+        for (_, value) in &self.values {
+            weight += consensus_params.rep_weights.weight(&value.signer());
+        }
+        weight >= consensus_params.quorum_weight
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rsnano_messages::Preproposal;
+    use rsnano_ledger::RepWeights;
+    use rsnano_messages::{Preproposal, PreproposalHash};
     use rsnano_types::{Account, BlockHash, PrivateKey};
 
     #[test]
-    fn default_quorum_weight_is_max() {
-        let params = ConsensusParams::default();
-        assert_eq!(params.quorum_weight, Amount::MAX);
+    fn a_new_aggregator_is_empty() {
+        let aggregator = Aggregator::<Preproposal>::default();
+        assert_eq!(aggregator.len(), 0);
+        assert!(aggregator.is_empty());
+        assert_eq!(aggregator.contains(&PreproposalHash::from(123)), false);
     }
 
     #[test]
-    fn no_quorum_if_value_doesnt_have_enough_vote_weight() {
-        let mut consensus_params = ConsensusParams::default();
+    fn add_preproposal() {
+        let mut aggregator = Aggregator::default();
 
+        let preproposal = Preproposal::new_test_instance();
+        aggregator.add(preproposal.clone());
+
+        assert_eq!(aggregator.len(), 1);
+        assert_eq!(aggregator.is_empty(), false);
+        assert_eq!(aggregator.contains(&PreproposalHash::from(123)), false);
+        assert_eq!(aggregator.contains(&preproposal.hash()), true);
+    }
+
+    #[test]
+    fn only_allow_one_preproposal_per_signer() {
+        let rep_key = PrivateKey::from(1);
+        let mut aggregator = Aggregator::default();
+
+        let preproposal1 =
+            Preproposal::new(vec![(Account::from(1), BlockHash::from(10))], &rep_key);
+        aggregator.add(preproposal1.clone());
+
+        let preproposal2 =
+            Preproposal::new(vec![(Account::from(2), BlockHash::from(20))], &rep_key);
+        aggregator.add(preproposal2.clone());
+
+        assert_eq!(aggregator.len(), 1, "Should only contain one preproposal");
+        assert!(
+            aggregator.contains(&preproposal1.hash()),
+            "Should contain preproposal1"
+        );
+    }
+
+    #[test]
+    fn no_quorum_if_value_does_not_have_enough_vote_weight() {
         let rep_key = PrivateKey::from(1);
         let weight = Amount::nano(10_000);
         let mut rep_weights = RepWeights::new();
         rep_weights.insert(rep_key.public_key(), weight);
-        consensus_params.set_rep_weights(rep_weights, Amount::MAX);
+        let consensus_params = ConsensusParams { rep_weights, quorum_weight: Amount::MAX };
 
         let mut aggregator = Aggregator::default();
         aggregator.add(Preproposal::new(Vec::new(), &rep_key));
 
         assert_eq!(
-            has_quantitative_quorum(&consensus_params, &aggregator),
+            aggregator.has_quorum(&consensus_params),
             false
         );
     }
 
     #[test]
-    fn reach_quantitative_quorum() {
+    fn reach_quorum() {
         let rep_key1 = PrivateKey::from(1);
         let rep_key2 = PrivateKey::from(2);
+        let weight1 = Amount::nano(100_000);
+        let weight2 = Amount::nano(200_000);
+        let quorum_weight = weight1 + weight2;
 
         let mut rep_weights = RepWeights::new();
-        rep_weights.insert(rep_key1.public_key(), Amount::nano(100_000));
-        rep_weights.insert(rep_key2.public_key(), Amount::nano(200_000));
+        rep_weights.insert(rep_key1.public_key(), weight1);
+        rep_weights.insert(rep_key2.public_key(), weight2);
 
         let mut aggregator = Aggregator::default();
-        let mut consensus_params = ConsensusParams::default();
-        consensus_params.set_rep_weights(rep_weights, Amount::nano(300_000));
+        let consensus_params = ConsensusParams { rep_weights, quorum_weight };
 
         let preproposal1 = Preproposal::new(test_frontiers(), &rep_key1);
         aggregator.add(preproposal1.clone());
@@ -105,54 +137,8 @@ mod tests {
         aggregator.add(preproposal2.clone());
 
         assert_eq!(
-            has_quantitative_quorum(&consensus_params, &aggregator),
+            aggregator.has_quorum(&consensus_params),
             true
-        );
-    }
-
-    #[test]
-    fn a_winner_proposal_is_not_found_if_there_are_no_votes() {
-        assert_eq!(
-            find_winner_proposal(&ConsensusParams::default(), vec![]),
-            None
-        );
-    }
-
-    #[test]
-    fn a_winner_proposal_is_not_found_if_quorum_is_not_reached() {
-        let mut params = ConsensusParams::default();
-        let rep_key = PrivateKey::from(1);
-        let weight = Amount::nano(100_000);
-        let mut rep_weights = RepWeights::new();
-        rep_weights.insert(rep_key.public_key(), weight);
-        params.set_rep_weights(rep_weights, Amount::MAX);
-
-        let proposal_hash = ProposalHash::from(1);
-        let proposal_vote = ProposalVote::new(proposal_hash, &rep_key);
-
-        assert_eq!(find_winner_proposal(&params, &[proposal_vote]), None);
-    }
-
-    #[test]
-    fn a_winner_proposal_is_found_if_quorum_is_reached() {
-        let mut params = ConsensusParams::default();
-
-        let rep_key1 = PrivateKey::from(1);
-        let rep_key2 = PrivateKey::from(2);
-        let weight = Amount::nano(100_000);
-
-        let mut rep_weights = RepWeights::new();
-        rep_weights.insert(rep_key1.public_key(), weight);
-        rep_weights.insert(rep_key2.public_key(), weight);
-        params.set_rep_weights(rep_weights, weight * 2);
-
-        let proposal_hash = ProposalHash::from(1);
-        let proposal_vote1 = ProposalVote::new(proposal_hash, &rep_key1);
-        let proposal_vote2 = ProposalVote::new(proposal_hash, &rep_key2);
-
-        assert_eq!(
-            find_winner_proposal(&params, &[proposal_vote1, proposal_vote2]),
-            Some(proposal_hash)
         );
     }
 

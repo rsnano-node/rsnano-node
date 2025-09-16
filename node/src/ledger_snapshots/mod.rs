@@ -1,21 +1,18 @@
-mod aggregator;
 mod tally;
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use rsnano_ledger::Ledger;
-use rsnano_messages::{Aggregatable, Message, Preproposal, Proposal, ProposalVote};
+use rsnano_messages::{Aggregatable, Message, Preproposal, Proposal, ProposalHash, ProposalVote};
 use rsnano_network::TrafficType;
 use rsnano_output_tracker::{OutputListenerMt, OutputTrackerMt};
-use rsnano_types::PrivateKey;
+use rsnano_types::{Amount, PrivateKey};
 use rsnano_types::{Account, BlockHash};
 
-use crate::ledger_snapshots::aggregator::Aggregator;
-use crate::ledger_snapshots::tally::{
-    ConsensusParams, find_winner_proposal, has_quantitative_quorum,
-};
-use crate::representatives::OnlineReps;
+use crate::ledger_snapshots::tally::Aggregator;
+use crate::representatives::{ConsensusParams, OnlineReps};
 use crate::transport::MessageFlooder;
 
 pub struct LedgerSnapshots {
@@ -28,7 +25,6 @@ pub struct LedgerSnapshots {
     receive_preproposal_listener: OutputListenerMt<Preproposal>,
     receive_proposal_listener: OutputListenerMt<Proposal>,
     receive_proposal_vote_listener: OutputListenerMt<ProposalVote>,
-    consensus_params: Mutex<ConsensusParams>,
     preproposal_aggregator: Mutex<Aggregator<Preproposal>>,
     proposal_aggregator: Mutex<Aggregator<Proposal>>,
     proposal_vote_aggregator: Mutex<Aggregator<ProposalVote>>,
@@ -50,7 +46,6 @@ impl LedgerSnapshots {
             receive_preproposal_listener: OutputListenerMt::new(),
             receive_proposal_listener: OutputListenerMt::new(),
             receive_proposal_vote_listener: OutputListenerMt::new(),
-            consensus_params: Default::default(),
             preproposal_aggregator: Default::default(),
             proposal_aggregator: Default::default(),
             proposal_vote_aggregator: Default::default(),
@@ -92,16 +87,13 @@ impl LedgerSnapshots {
     pub fn receive_preproposal(&self, preproposal: Preproposal) {
         self.receive_preproposal_listener.emit(preproposal.clone());
 
-        let (rep_weights, quorum_weight) = self.get_consensus_info();
-
         let proposal = {
-            let mut consensus_params = self.consensus_params.lock().unwrap();
-            consensus_params.set_rep_weights(rep_weights, quorum_weight);
+            let consensus_params = self.online_reps.lock().unwrap().get_consensus_params();
 
             let mut preproposal_aggregator = self.preproposal_aggregator.lock().unwrap();
             preproposal_aggregator.add(preproposal);
 
-            if has_quantitative_quorum(&consensus_params, &preproposal_aggregator) {
+            if preproposal_aggregator.has_quorum(&consensus_params) {
                 let proposal = Proposal::new(
                     preproposal_aggregator.values(),
                     &(self.get_private_key)().unwrap(),
@@ -121,13 +113,6 @@ impl LedgerSnapshots {
         };
     }
 
-    fn get_consensus_info(&self) -> (rsnano_ledger::RepWeights, rsnano_types::Amount) {
-        let online_reps = self.online_reps.lock().unwrap();
-        let rep_weights = online_reps.get_rep_weights();
-        let quorum_weight = online_reps.quorum_delta();
-        (rep_weights, quorum_weight)
-    }
-
     pub fn track_received_preproposals(&self) -> Arc<OutputTrackerMt<Preproposal>> {
         self.receive_preproposal_listener.track()
     }
@@ -135,14 +120,12 @@ impl LedgerSnapshots {
     pub fn receive_proposal(&self, proposal: Proposal) {
         self.receive_proposal_listener.emit(proposal.clone());
 
-        let (rep_weights, quorum_weight) = self.get_consensus_info();
-        let mut consensus_params = self.consensus_params.lock().unwrap();
-        consensus_params.set_rep_weights(rep_weights, quorum_weight);
+        let consensus_params = self.online_reps.lock().unwrap().get_consensus_params();
 
         let mut proposal_aggregator = self.proposal_aggregator.lock().unwrap();
         proposal_aggregator.add(proposal);
 
-        if has_quantitative_quorum(&consensus_params, &proposal_aggregator)
+        if proposal_aggregator.has_quorum(&consensus_params)
             && !self.proposal_voted.load(Ordering::SeqCst)
         {
             if let Some(proposal_vote) = LedgerSnapshots::create_proposal_vote(
@@ -181,16 +164,31 @@ impl LedgerSnapshots {
         self.receive_proposal_vote_listener
             .emit(proposal_vote.clone());
 
-        let (rep_weights, quorum_weight) = self.get_consensus_info();
-        let mut consensus_params = self.consensus_params.lock().unwrap();
-        consensus_params.set_rep_weights(rep_weights, quorum_weight);
+        let consensus_params = self.online_reps.lock().unwrap().get_consensus_params();
 
         let mut vote_aggregator = self.proposal_vote_aggregator.lock().unwrap();
         vote_aggregator.add(proposal_vote);
 
-        if let Some(winner) = find_winner_proposal(&consensus_params, vote_aggregator.values()) {
+        if let Some(winner) = LedgerSnapshots::find_winner_proposal(&consensus_params, vote_aggregator.values()) {
             tracing::warn!(proposal_hash=?winner, "Found a winner!");
         }
+    }
+
+    pub(crate) fn find_winner_proposal<'a>(
+        params: &ConsensusParams,
+        votes: impl IntoIterator<Item = &'a ProposalVote>,
+    ) -> Option<ProposalHash> {
+        let mut tallies: HashMap<ProposalHash, Amount> = HashMap::new();
+    
+        for vote in votes {
+            let weight = tallies.entry(vote.proposal_hash).or_default();
+            *weight += params.rep_weights.weight(&vote.voter);
+        }
+    
+        tallies
+            .into_iter()
+            .find(|(_, w)| *w >= params.quorum_weight)
+            .map(|(p, _)| p)
     }
 }
 
@@ -294,20 +292,6 @@ mod tests {
     }
 
     #[test]
-    fn a_received_preproposal_sets_the_rep_weights() {
-        let fixture = Fixture::new();
-        let snapshots = &fixture.snapshots;
-        let preproposal = Preproposal::new_test_instance();
-
-        snapshots.receive_preproposal(preproposal.clone());
-        let online_reps = snapshots.online_reps.lock().unwrap();
-        let tally = snapshots.consensus_params.lock().unwrap();
-
-        assert_eq!(tally.quorum_weight, online_reps.quorum_delta());
-        assert_eq!(tally.rep_weights, online_reps.get_rep_weights());
-    }
-
-    #[test]
     fn publish_proposal_vote_when_quorum_of_preproposals_is_reached() {
         let mut rep_weights = RepWeights::new();
         let private_key = get_test_key().unwrap();
@@ -361,20 +345,6 @@ mod tests {
                 .unwrap()
                 .contains(&proposal.hash())
         );
-    }
-
-    #[test]
-    fn a_received_proposal_sets_the_rep_weights() {
-        let fixture = Fixture::new();
-        let snapshots = &fixture.snapshots;
-        let proposal = Proposal::new_test_instance();
-
-        snapshots.receive_proposal(proposal.clone());
-        let online_reps = snapshots.online_reps.lock().unwrap();
-        let tally = snapshots.consensus_params.lock().unwrap();
-
-        assert_eq!(tally.quorum_weight, online_reps.quorum_delta());
-        assert_eq!(tally.rep_weights, online_reps.get_rep_weights());
     }
 
     #[test]
@@ -479,6 +449,51 @@ mod tests {
                 .lock()
                 .unwrap()
                 .contains(&proposal_vote.hash())
+        );
+    }
+
+    #[test]
+    fn a_winner_proposal_is_not_found_if_there_are_no_votes() {
+        assert_eq!(
+            LedgerSnapshots::find_winner_proposal(&ConsensusParams::default(), vec![]),
+            None
+        );
+    }
+
+    #[test]
+    fn a_winner_proposal_is_not_found_if_quorum_is_not_reached() {
+        let rep_key = PrivateKey::from(1);
+        let weight = Amount::nano(100_000);
+        let mut rep_weights = RepWeights::new();
+        rep_weights.insert(rep_key.public_key(), weight);
+        let params = ConsensusParams { rep_weights, quorum_weight: Amount::MAX };
+
+        let proposal_hash = ProposalHash::from(1);
+        let proposal_vote = ProposalVote::new(proposal_hash, &rep_key);
+
+        assert_eq!(LedgerSnapshots::find_winner_proposal(&params, &[proposal_vote]), None);
+    }
+
+    #[test]
+    fn a_winner_proposal_is_found_if_quorum_is_reached() {
+        let rep_key1 = PrivateKey::from(1);
+        let rep_key2 = PrivateKey::from(2);
+        let weight = Amount::nano(100_000);
+
+        let mut rep_weights = RepWeights::new();
+        rep_weights.insert(rep_key1.public_key(), weight);
+        rep_weights.insert(rep_key2.public_key(), weight);
+        let quorum_weight = weight * 2;
+
+        let params = ConsensusParams { rep_weights, quorum_weight };
+
+        let proposal_hash = ProposalHash::from(1);
+        let proposal_vote1 = ProposalVote::new(proposal_hash, &rep_key1);
+        let proposal_vote2 = ProposalVote::new(proposal_hash, &rep_key2);
+
+        assert_eq!(
+            LedgerSnapshots::find_winner_proposal(&params, &[proposal_vote1, proposal_vote2]),
+            Some(proposal_hash)
         );
     }
 

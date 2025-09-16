@@ -288,6 +288,12 @@ impl OnlineReps {
     pub fn get_rep_weights(&self) -> RepWeights {
         self.rep_weights.read().clone()
     }
+
+    pub fn get_consensus_params(&self) -> ConsensusParams {
+        let rep_weights = self.get_rep_weights();
+        let quorum_weight = self.quorum_delta();
+        ConsensusParams { rep_weights, quorum_weight }
+    }
 }
 
 impl Default for OnlineReps {
@@ -366,6 +372,12 @@ impl QuorumSpecs {
             quorum_delta: Amount::nano(67_000_000),
         }
     }
+}
+
+#[derive(Default)]
+pub struct ConsensusParams {
+    pub rep_weights: RepWeights,
+    pub quorum_weight: Amount,
 }
 
 #[cfg(test)]
