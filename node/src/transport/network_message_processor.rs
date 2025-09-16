@@ -279,6 +279,7 @@ mod tests {
         assert_eq!(receive_tracker.output(), vec![proposal_vote]);
     }
 
+    #[cfg(feature = "ledger_snapshots")]
     fn create_network_message_processor(
         ledger_snapshots: LedgerSnapshots,
     ) -> NetworkMessageProcessor {
