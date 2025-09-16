@@ -798,8 +798,8 @@ fn search_receivable_same() {
             true,
             None,
         )
-        .wait();
-    assert!(send_result1.is_ok());
+        .wait()
+        .unwrap();
     let send_result2 = node
         .wallets
         .send(
@@ -811,12 +811,28 @@ fn search_receivable_same() {
             true,
             None,
         )
-        .wait();
-    assert!(send_result2.is_ok());
+        .wait()
+        .unwrap();
     node.wallets
         .insert_adhoc2(&wallet_id, &key2.raw_key(), true)
         .unwrap();
-    node.wallets.search_receivable(&wallet_id).wait().unwrap();
+
+    // Wait for both send blocks to be confirmed
+    assert_timely2(|| {
+        let any = node.ledger.any();
+        any.confirmed().block_exists(&send_result1.hash())
+            && any.confirmed().block_exists(&send_result2.hash())
+    });
+
+    // Ensure there are two receivable entries for key2
+    assert_timely2(|| {
+        let any = node.ledger.any();
+        any.account_receivable_upper_bound(key2.account(), BlockHash::ZERO)
+            .count()
+            >= 2
+    });
+
+    let _ = node.wallets.search_receivable(&wallet_id).wait();
 
     assert_timely2(|| node.balance(&key2.account()) == node.config.receive_minimum * 2);
 }
