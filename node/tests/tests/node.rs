@@ -544,7 +544,6 @@ fn fork_multi_flip() {
 
 // This test is racy, there is no guarantee that the election won't be confirmed until all forks are fully processed
 #[test]
-#[ignore]
 fn fork_publish() {
     let mut system = System::new();
     let node1 = system.make_node();

@@ -221,12 +221,12 @@ impl NetworkMessageProcessor {
     }
 }
 
+#[cfg(feature = "ledger_snapshots")]
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    #[cfg(feature = "ledger_snapshots")]
     fn preproposal_is_received() {
         use rsnano_messages::Preproposal;
 
@@ -244,7 +244,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "ledger_snapshots")]
     fn proposal_is_received() {
         use rsnano_messages::Proposal;
 
@@ -262,7 +261,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "ledger_snapshots")]
     fn proposal_vote_is_received() {
         use rsnano_messages::ProposalVote;
 
@@ -279,7 +277,6 @@ mod tests {
         assert_eq!(receive_tracker.output(), vec![proposal_vote]);
     }
 
-    #[cfg(feature = "ledger_snapshots")]
     fn create_network_message_processor(
         ledger_snapshots: LedgerSnapshots,
     ) -> NetworkMessageProcessor {
