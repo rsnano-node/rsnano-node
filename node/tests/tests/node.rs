@@ -135,6 +135,8 @@ fn vote_by_hash_bundle() {
     for block in &blocks {
         node.vote_generators
             .generate_vote(&block.root(), &block.hash(), VoteType::NonFinal);
+
+        std::thread::sleep(Duration::from_millis(10));
     }
 
     let mut max_hashes = 0;
