@@ -1,4 +1,5 @@
 mod tally;
+mod preconsensus;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -9,23 +10,18 @@ use rsnano_messages::{Aggregatable, Message, Preproposal, Proposal, ProposalHash
 use rsnano_network::TrafficType;
 use rsnano_output_tracker::{OutputListenerMt, OutputTrackerMt};
 use rsnano_types::{Amount, PrivateKey};
-use rsnano_types::{Account, BlockHash};
 
+use crate::ledger_snapshots::preconsensus::Preconsensus;
 use crate::ledger_snapshots::tally::Aggregator;
 use crate::representatives::{ConsensusParams, OnlineReps};
 use crate::transport::MessageFlooder;
 
 pub struct LedgerSnapshots {
-    ledger: Arc<Ledger>,
-    /// For simplicity we currently assume that there is at most
-    /// one representative key!
-    /// TODO: We have to extend this later to multiple representatives per node.
-    get_private_key: Box<dyn Fn() -> Option<PrivateKey> + Send + Sync>,
-    flooder: Mutex<MessageFlooder>,
-    receive_preproposal_listener: OutputListenerMt<Preproposal>,
+    get_private_key: Arc<dyn Fn() -> Option<PrivateKey> + Send + Sync>,
+    flooder: Arc<Mutex<MessageFlooder>>,
+    pub preconsensus: Arc<Preconsensus>,
     receive_proposal_listener: OutputListenerMt<Proposal>,
     receive_proposal_vote_listener: OutputListenerMt<ProposalVote>,
-    preproposal_aggregator: Mutex<Aggregator<Preproposal>>,
     proposal_aggregator: Mutex<Aggregator<Proposal>>,
     proposal_vote_aggregator: Mutex<Aggregator<ProposalVote>>,
     online_reps: Arc<Mutex<OnlineReps>>,
@@ -35,18 +31,16 @@ pub struct LedgerSnapshots {
 impl LedgerSnapshots {
     pub fn new(
         ledger: Arc<Ledger>,
-        get_private_key: impl Fn() -> Option<PrivateKey> + Send + Sync + 'static,
-        flooder: MessageFlooder,
+        get_private_key: Arc<dyn Fn() -> Option<PrivateKey> + Send + Sync>,
+        flooder: Arc<Mutex<MessageFlooder>>,
         online_reps: Arc<Mutex<OnlineReps>>,
     ) -> Self {
         Self {
-            ledger,
-            get_private_key: Box::new(get_private_key),
-            flooder: flooder.into(),
-            receive_preproposal_listener: OutputListenerMt::new(),
+            get_private_key: get_private_key.clone(),
+            flooder: flooder.clone(),
+            preconsensus: Preconsensus::new(ledger, get_private_key.clone(), flooder.clone(), online_reps.clone()).into(),
             receive_proposal_listener: OutputListenerMt::new(),
             receive_proposal_vote_listener: OutputListenerMt::new(),
-            preproposal_aggregator: Default::default(),
             proposal_aggregator: Default::default(),
             proposal_vote_aggregator: Default::default(),
             online_reps,
@@ -57,64 +51,10 @@ impl LedgerSnapshots {
     pub fn new_null() -> Self {
         Self::new(
             Ledger::new_null().into(),
-            || None,
-            MessageFlooder::new_null(),
+            Arc::new(|| None),
+            Mutex::new(MessageFlooder::new_null()).into(),
             Mutex::new(OnlineReps::default()).into(),
         )
-    }
-
-    pub fn publish_preproposal(&self) {
-        // TODO add test for no private key
-        let private_key = (self.get_private_key)().unwrap();
-        let preproposal = self.create_preproposal(&private_key);
-        let message = Message::SnapshotPreproposal(preproposal);
-        self.flooder.lock().unwrap().flood_prs_and_some_non_prs(
-            &message,
-            TrafficType::LedgerSnapshots,
-            0.0,
-        );
-    }
-
-    fn create_preproposal(&self, private_key: &PrivateKey) -> Preproposal {
-        let frontiers = self.collect_frontiers();
-        Preproposal::new(frontiers, private_key)
-    }
-
-    fn collect_frontiers(&self) -> Vec<(Account, BlockHash)> {
-        self.ledger.confirmed().frontiers().collect()
-    }
-
-    pub fn receive_preproposal(&self, preproposal: Preproposal) {
-        self.receive_preproposal_listener.emit(preproposal.clone());
-
-        let proposal = {
-            let consensus_params = self.online_reps.lock().unwrap().get_consensus_params();
-
-            let mut preproposal_aggregator = self.preproposal_aggregator.lock().unwrap();
-            preproposal_aggregator.add(preproposal);
-
-            if preproposal_aggregator.has_quorum(&consensus_params) {
-                let proposal = Proposal::new(
-                    preproposal_aggregator.values(),
-                    &(self.get_private_key)().unwrap(),
-                );
-                Some(proposal)
-            } else {
-                None
-            }
-        };
-
-        if let Some(proposal) = proposal {
-            self.flooder.lock().unwrap().flood_prs_and_some_non_prs(
-                &Message::SnapshotProposal(proposal),
-                TrafficType::LedgerSnapshots,
-                0.0,
-            );
-        };
-    }
-
-    pub fn track_received_preproposals(&self) -> Arc<OutputTrackerMt<Preproposal>> {
-        self.receive_preproposal_listener.track()
     }
 
     pub fn receive_proposal(&self, proposal: Proposal) {
@@ -200,96 +140,8 @@ mod tests {
     use rsnano_messages::{Aggregatable, Message, ProposalVote};
     use rsnano_network::TrafficType;
     use rsnano_output_tracker::OutputTrackerMt;
-    use rsnano_types::{AccountInfo, Amount, ConfirmationHeightInfo};
+    use rsnano_types::{Account, AccountInfo, Amount, BlockHash, ConfirmationHeightInfo};
     use std::time::Duration;
-
-    #[test]
-    fn ledger_with_one_account() {
-        let account = Account::from(1);
-        let frontier = BlockHash::from(2);
-        let fixture = Fixture::with_frontiers([(account, frontier)]);
-        assert_eq!(fixture.snapshots.collect_frontiers(), [(account, frontier)]);
-    }
-
-    #[test]
-    fn ledger_with_multiple_accounts() {
-        let account1 = Account::from(1);
-        let frontier1 = BlockHash::from(100);
-        let account2 = Account::from(2);
-        let frontier2 = BlockHash::from(200);
-
-        let fixture = Fixture::with_frontiers([(account1, frontier1), (account2, frontier2)]);
-        assert_eq!(
-            fixture.snapshots.collect_frontiers(),
-            [(account1, frontier1), (account2, frontier2)]
-        );
-    }
-
-    #[test]
-    fn create_preproposal() {
-        let account = Account::from(10);
-        let frontier = BlockHash::from(2);
-        let fixture = Fixture::with_frontiers([(account, frontier)]);
-
-        let preproposal = fixture.snapshots.create_preproposal(&PrivateKey::from(1));
-
-        assert!(preproposal.frontiers.contains(&(account, frontier)));
-    }
-
-    #[test]
-    fn publish_preproposal() {
-        let account = Account::from(1);
-        let frontier = BlockHash::from(100);
-        let fixture = Fixture::with_frontiers([(account, frontier)]);
-
-        fixture.snapshots.publish_preproposal();
-
-        let flood_events = fixture.flood_tracker.output();
-        assert_eq!(flood_events.len(), 1, "Should flood the message");
-
-        let expected_preproposal = fixture
-            .snapshots
-            .create_preproposal(&get_test_key().unwrap());
-
-        assert_eq!(
-            flood_events[0],
-            FloodEvent {
-                message: Message::SnapshotPreproposal(expected_preproposal),
-                // TODO: add new traffic type for snapshots
-                traffic_type: TrafficType::LedgerSnapshots,
-                scale: 0.0,
-                all_prs: true,
-            }
-        );
-    }
-
-    #[test]
-    fn can_track_received_preproposals() {
-        let fixture = Fixture::new();
-        let preproposal = Preproposal::new_test_instance();
-        fixture.snapshots.receive_preproposal(preproposal.clone());
-
-        let receive_events = fixture.receive_preproposal_tracker.output();
-        assert_eq!(receive_events.len(), 1, "Should receive preproposal");
-        assert_eq!(receive_events[0], preproposal);
-    }
-
-    #[test]
-    fn a_received_preproposal_is_added_to_the_preproposal_aggregator() {
-        let fixture = Fixture::new();
-        let snapshots = &fixture.snapshots;
-        let preproposal = Preproposal::new_test_instance();
-
-        snapshots.receive_preproposal(preproposal.clone());
-
-        assert!(
-            snapshots
-                .preproposal_aggregator
-                .lock()
-                .unwrap()
-                .contains(&preproposal.hash())
-        );
-    }
 
     #[test]
     fn publish_proposal_vote_when_quorum_of_preproposals_is_reached() {
@@ -301,7 +153,7 @@ mod tests {
         let fixture = Fixture::with_rep_weights(rep_weights, quorum_weight);
 
         let preproposal = Preproposal::new(vec![], &private_key);
-        fixture.snapshots.receive_preproposal(preproposal.clone());
+        fixture.snapshots.preconsensus.receive_preproposal(preproposal.clone());
 
         let flood_events = fixture.flood_tracker.output();
         assert_eq!(flood_events.len(), 1, "Should flood the message");
@@ -542,9 +394,9 @@ mod tests {
             let online_reps = Arc::new(Mutex::new(online_reps));
 
             let snapshots =
-                LedgerSnapshots::new(ledger.clone(), get_test_key, flooder, online_reps);
+                LedgerSnapshots::new(ledger.clone(), Arc::new(get_test_key), Arc::new(Mutex::new(flooder)), online_reps);
 
-            let receive_preproposal_tracker = snapshots.track_received_preproposals();
+            let receive_preproposal_tracker = snapshots.preconsensus.track_received_preproposals();
             let receive_proposal_tracker = snapshots.track_received_proposals();
             let receive_proposal_vote_tracker = snapshots.track_received_proposal_votes();
 

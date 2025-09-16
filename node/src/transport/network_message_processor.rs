@@ -201,7 +201,7 @@ impl NetworkMessageProcessor {
                 use tracing::warn;
                 warn!("Snapshot preproposal received");
 
-                self.ledger_snapshots.receive_preproposal(preproposal);
+                self.ledger_snapshots.preconsensus.receive_preproposal(preproposal);
             }
             #[cfg(feature = "ledger_snapshots")]
             Message::SnapshotProposal(proposal) => {
@@ -231,7 +231,7 @@ mod tests {
         use rsnano_messages::Preproposal;
 
         let ledger_snapshots = LedgerSnapshots::new_null();
-        let receive_tracker = ledger_snapshots.track_received_preproposals();
+        let receive_tracker = ledger_snapshots.preconsensus.track_received_preproposals();
         let network_message_processor = create_network_message_processor(ledger_snapshots);
         let preproposal = Preproposal::new_test_instance();
 

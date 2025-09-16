@@ -952,15 +952,15 @@ impl Node {
             let wallet_reps2 = wallet_reps.clone();
             Arc::new(LedgerSnapshots::new(
                 ledger.clone(),
-                move || {
+                Arc::new(move || {
                     // TODO: make this nice:
                     let mut keys = Vec::new();
                     wallet_reps2.lock().unwrap().rep_priv_keys(&mut keys);
                     // For simplicity only take the first key.
                     // TODO: allow multiple keys
                     keys.pop()
-                },
-                message_flooder.clone(),
+                }),
+                Arc::new(Mutex::new(message_flooder.clone())),
                 online_reps.clone(),
             ))
         };
