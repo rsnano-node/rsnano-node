@@ -85,11 +85,11 @@ mod tests {
         let mut aggregator = Aggregator::default();
 
         let preproposal1 =
-            Preproposal::new(vec![(Account::from(1), BlockHash::from(10))], &rep_key);
+            Preproposal::new(vec![(Account::from(1), BlockHash::from(10))], &rep_key, 0);
         aggregator.add(preproposal1.clone());
 
         let preproposal2 =
-            Preproposal::new(vec![(Account::from(2), BlockHash::from(20))], &rep_key);
+            Preproposal::new(vec![(Account::from(2), BlockHash::from(20))], &rep_key, 0);
         aggregator.add(preproposal2.clone());
 
         assert_eq!(aggregator.len(), 1, "Should only contain one preproposal");
@@ -108,7 +108,7 @@ mod tests {
         let consensus_params = ConsensusParams { rep_weights, quorum_weight: Amount::MAX };
 
         let mut aggregator = Aggregator::default();
-        aggregator.add(Preproposal::new(Vec::new(), &rep_key));
+        aggregator.add(Preproposal::new(Vec::new(), &rep_key, 0));
 
         assert_eq!(
             aggregator.has_quorum(&consensus_params),
@@ -131,9 +131,9 @@ mod tests {
         let mut aggregator = Aggregator::default();
         let consensus_params = ConsensusParams { rep_weights, quorum_weight };
 
-        let preproposal1 = Preproposal::new(test_frontiers(), &rep_key1);
+        let preproposal1 = Preproposal::new(test_frontiers(), &rep_key1, 0);
         aggregator.add(preproposal1.clone());
-        let preproposal2 = Preproposal::new(test_frontiers(), &rep_key2);
+        let preproposal2 = Preproposal::new(test_frontiers(), &rep_key2, 0);
         aggregator.add(preproposal2.clone());
 
         assert_eq!(

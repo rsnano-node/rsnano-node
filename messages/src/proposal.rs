@@ -125,6 +125,7 @@ mod tests {
                 (Account::from(2), BlockHash::from(20)),
             ],
             &PrivateKey::new(),
+            0
         );
         let pre2 = Preproposal::new(
             vec![
@@ -132,6 +133,7 @@ mod tests {
                 (Account::from(1), BlockHash::from(10)),
             ],
             &PrivateKey::new(),
+            0
         );
 
         let p1 = Proposal::new(&[pre1.clone(), pre2.clone()], &PrivateKey::new());

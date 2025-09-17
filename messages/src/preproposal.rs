@@ -1,6 +1,6 @@
 use crate::{Aggregatable, MessageVariant};
 use bitvec::prelude::BitArray;
-use rsnano_types::DeserializationError;
+use rsnano_types::{read_u32_be, DeserializationError, SnapshotNumber};
 use rsnano_types::{
     Account, Blake2Hash, Blake2HashBuilder, BlockHash, PrivateKey, PublicKey, Signature,
 };
@@ -10,14 +10,16 @@ pub type FrontiersHash = Blake2Hash;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Preproposal {
+    pub snapshot_number: SnapshotNumber,
     pub frontiers: Vec<(Account, BlockHash)>,
     pub signer: PublicKey,
     pub signature: Signature,
 }
 
 impl Preproposal {
-    pub fn new(frontiers: Vec<(Account, BlockHash)>, private_key: &PrivateKey) -> Self {
+    pub fn new(frontiers: Vec<(Account, BlockHash)>, private_key: &PrivateKey, snapshot_number: SnapshotNumber) -> Self {
         let mut preproposal = Self {
+            snapshot_number,
             frontiers,
             signer: private_key.public_key(),
             signature: Signature::default(),
@@ -29,6 +31,7 @@ impl Preproposal {
 
     pub fn new_test_instance() -> Self {
         Self {
+            snapshot_number: 1,
             frontiers: vec![(Account::from(1), BlockHash::from(100))],
             signer: PublicKey::from(2),
             signature: Signature::from_bytes([1; 64]),
@@ -62,6 +65,7 @@ impl Preproposal {
     where
         T: std::io::Write,
     {
+        writer.write_all(&self.snapshot_number.to_be_bytes())?;
         self.signer.serialize(writer)?;
         self.signature.serialize(writer)?;
         for (account, hash) in &self.frontiers {
@@ -76,6 +80,7 @@ impl Preproposal {
     }
 
     pub fn deserialize(mut bytes: &[u8]) -> Result<Self, DeserializationError> {
+        let snapshot_number = read_u32_be(&mut bytes)?;
         let signer = PublicKey::deserialize(&mut bytes)?;
         let signature = Signature::deserialize(&mut bytes)?;
         let mut frontiers = Vec::new();
@@ -87,6 +92,7 @@ impl Preproposal {
         }
 
         Ok(Preproposal {
+            snapshot_number,
             frontiers,
             signer,
             signature,
@@ -109,6 +115,7 @@ impl Aggregatable for Preproposal {
         let frontiers_hash = self.frontiers_hash();
         let mut hash_builder: Blake2HashBuilder = Blake2HashBuilder::default();
         hash_builder = hash_builder
+            .update(self.snapshot_number.to_be_bytes())
             .update(frontiers_hash.as_bytes())
             .update(self.signer.as_bytes());
         hash_builder.build()
@@ -125,7 +132,7 @@ mod tests {
         let private_key = PrivateKey::from(42);
         let frontiers = vec![(Account::from(1), BlockHash::from(2))];
 
-        let preproposal = Preproposal::new(frontiers, &private_key);
+        let preproposal = Preproposal::new(frontiers, &private_key, 0);
 
         assert_eq!(preproposal.signer, private_key.public_key());
 
@@ -161,21 +168,36 @@ mod tests {
 
     #[test]
     fn hash_preproposals() {
+        let key1 = PrivateKey::from(1);
+        let key2 = PrivateKey::from(2);
+
+        let snapshot_number1 = 0;
+        let snapshot_number2 = 1;
+
+        let frontiers1 = vec![
+            (Account::from(1), BlockHash::from(10)),
+            (Account::from(2), BlockHash::from(20)),
+        ];
+        let frontiers2 = vec![
+            (Account::from(2), BlockHash::from(20)),
+            (Account::from(1), BlockHash::from(10)),
+        ];
+
         let p1 = Preproposal::new(
-            vec![
-                (Account::from(1), BlockHash::from(10)),
-                (Account::from(2), BlockHash::from(20)),
-            ],
-            &PrivateKey::new(),
+            frontiers1.clone(),
+            &key1,
+            snapshot_number1
         );
         let p2 = Preproposal::new(
-            vec![
-                (Account::from(2), BlockHash::from(20)),
-                (Account::from(1), BlockHash::from(10)),
-            ],
-            &PrivateKey::new(),
+            frontiers2.clone(),
+            &key2,
+            snapshot_number1
         );
+        let p3 = Preproposal::new(frontiers1.clone(), &key1, snapshot_number2);
+        let p4 = Preproposal::new(vec![], &key1, snapshot_number1);
 
-        assert_eq!(p1.frontiers_hash(), p2.frontiers_hash());
+        assert_ne!(p1.hash(), p2.hash());
+        assert_ne!(p1.hash(), p3.hash());
+        assert_ne!(p1.hash(), p4.hash());
     }
 }

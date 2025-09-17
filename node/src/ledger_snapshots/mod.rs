@@ -77,7 +77,7 @@ impl LedgerSnapshots {
 
     fn create_preproposal(&self, private_key: &PrivateKey) -> Preproposal {
         let frontiers = self.collect_frontiers();
-        Preproposal::new(frontiers, private_key)
+        Preproposal::new(frontiers, private_key, 0)
     }
 
     fn collect_frontiers(&self) -> Vec<(Account, BlockHash)> {
@@ -300,7 +300,7 @@ mod tests {
         rep_weights.insert(private_key.public_key(), quorum_weight);
         let fixture = Fixture::with_rep_weights(rep_weights, quorum_weight);
 
-        let preproposal = Preproposal::new(vec![], &private_key);
+        let preproposal = Preproposal::new(vec![], &private_key, 0);
         fixture.snapshots.receive_preproposal(preproposal.clone());
 
         let flood_events = fixture.flood_tracker.output();
