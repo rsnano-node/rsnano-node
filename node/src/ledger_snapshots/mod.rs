@@ -200,10 +200,7 @@ mod tests {
     fn collect_one_frontier() {
         let account = Account::from(1);
         let frontier = BlockHash::from(2);
-        let ledger_snapshots = LedgerSnapshots {
-            ledger: Ledger::new_test_instance([(account, frontier)]),
-            ..LedgerSnapshots::new_null()
-        };
+        let ledger_snapshots = LedgerSnapshots::new_test_instance([(Account::from(1), frontier)]);
 
         assert_eq!(ledger_snapshots.collect_frontiers(), [(account, frontier)]);
     }
@@ -214,10 +211,7 @@ mod tests {
         let frontier1 = BlockHash::from(100);
         let account2 = Account::from(2);
         let frontier2 = BlockHash::from(200);
-        let ledger_snapshots = LedgerSnapshots {
-            ledger: Ledger::new_test_instance([(account1, frontier1), (account2, frontier2)]),
-            ..LedgerSnapshots::new_null()
-        };
+        let ledger_snapshots = LedgerSnapshots::new_test_instance([(account1, frontier1), (account2, frontier2)]);
 
         assert_eq!(
             ledger_snapshots.collect_frontiers(),
@@ -245,6 +239,7 @@ mod tests {
         let flood_tracker = ledger_snapshots.flooder.lock().unwrap().track_floods();
 
         ledger_snapshots.publish_preproposal();
+
         let flood_events = flood_tracker.output();
         let expected_preproposal =
             ledger_snapshots.create_preproposal(&PrivateKey::new_test_instance());
@@ -286,11 +281,9 @@ mod tests {
         ledger_snapshots.receive_preproposal(preproposal.clone());
 
         let flood_events = flood_tracker.output();
-        assert_eq!(flood_events.len(), 1, "Should flood the message");
-
-        let snapshot_number = ledger_snapshots.get_current_snapshot_number();
         let expected_proposal = Proposal::new(&[preproposal], &private_key, snapshot_number);
 
+        assert_eq!(flood_events.len(), 1, "Should flood the message");
         assert_eq!(
             flood_events[0],
             FloodEvent {
@@ -312,9 +305,10 @@ mod tests {
         let ledger_snapshots = LedgerSnapshots::new_null();
         let proposal = Proposal::new_test_instance();
         let receive_proposal_tracker = ledger_snapshots.track_received_proposals();
+        
         ledger_snapshots.receive_proposal(proposal.clone());
-
         let receive_events = receive_proposal_tracker.output();
+
         assert_eq!(receive_events.len(), 1, "Should receive proposal");
         assert_eq!(receive_events[0], proposal);
     }
@@ -330,11 +324,10 @@ mod tests {
         ledger_snapshots.receive_proposal(proposal.clone());
 
         let flood_events = flood_tracker.output();
-        assert_eq!(flood_events.len(), 1, "Should flood the message");
-
         let expected_proposal_vote =
             ProposalVote::new(proposal.hash(), &private_key, snapshot_number);
 
+        assert_eq!(flood_events.len(), 1, "Should flood the message");
         assert_eq!(
             flood_events[0],
             FloodEvent {
@@ -360,10 +353,12 @@ mod tests {
 
         let proposal1 = Proposal::new(vec![], &private_key, snapshot_number);
         let proposal2 = Proposal::new(vec![], &PrivateKey::from(2), snapshot_number);
+
         ledger_snapshots.receive_proposal(proposal1.clone());
         ledger_snapshots.receive_proposal(proposal2);
 
         let flood_events = flood_tracker.output();
+
         assert_eq!(flood_events.len(), 1, "Should flood only one vote message");
     }
 
@@ -372,9 +367,10 @@ mod tests {
         let ledger_snapshots = LedgerSnapshots::new_null();
         let receive_proposal_vote_tracker = ledger_snapshots.track_received_proposal_votes();
         let proposal_vote = ProposalVote::new_test_instance();
+        
         ledger_snapshots.receive_proposal_vote(proposal_vote.clone());
-
         let receive_events = receive_proposal_vote_tracker.output();
+        
         assert_eq!(receive_events.len(), 1, "Should receive proposal vote");
         assert_eq!(receive_events[0], proposal_vote);
     }

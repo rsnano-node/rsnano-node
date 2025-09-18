@@ -68,6 +68,7 @@ mod tests {
     #[test]
     fn a_new_aggregator_is_empty() {
         let aggregator = Aggregator::<Preproposal>::default();
+
         assert_eq!(aggregator.len(), 0);
         assert!(aggregator.is_empty());
         assert_eq!(aggregator.contains(&PreproposalHash::from(123)), false);
@@ -127,6 +128,8 @@ mod tests {
         let rep_key1 = PrivateKey::from(1);
         let rep_key2 = PrivateKey::from(2);
 
+        let frontiers = vec![(Account::from(1), BlockHash::from(10))];
+
         let mut rep_weights = RepWeights::new();
         rep_weights.insert(rep_key1.public_key(), Amount::nano(100_000));
         rep_weights.insert(rep_key2.public_key(), Amount::nano(200_000));
@@ -135,15 +138,11 @@ mod tests {
         let mut consensus_params = ConsensusParams::default();
         consensus_params.set_rep_weights(rep_weights, Amount::nano(300_000));
 
-        let preproposal1 = Preproposal::new(test_frontiers(), &rep_key1, 0);
+        let preproposal1 = Preproposal::new(frontiers.clone(), &rep_key1, 0);
         aggregator.add(preproposal1.clone());
-        let preproposal2 = Preproposal::new(test_frontiers(), &rep_key2, 0);
+        let preproposal2 = Preproposal::new(frontiers, &rep_key2, 0);
         aggregator.add(preproposal2.clone());
 
         assert_eq!(aggregator.has_quorum(&consensus_params), true);
-    }
-
-    fn test_frontiers() -> Vec<(Account, BlockHash)> {
-        vec![(Account::from(1), BlockHash::from(10))]
     }
 }
