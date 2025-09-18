@@ -1,18 +1,18 @@
 mod aggregator;
 mod state;
 
-use std::sync::{Arc, Mutex};
+use crate::{
+    ledger_snapshots::{aggregator::Aggregator, state::State},
+    representatives::OnlineReps,
+    transport::MessageFlooder,
+};
 use rsnano_ledger::Ledger;
 use rsnano_messages::{Aggregatable, Message, Preproposal, Proposal, ProposalVote};
 use rsnano_network::TrafficType;
 use rsnano_output_tracker::{OutputListenerMt, OutputTrackerMt};
 use rsnano_types::{Account, BlockHash};
 use rsnano_types::{PrivateKey, SnapshotNumber};
-use crate::{
-    ledger_snapshots::{aggregator::Aggregator, state::State},
-    representatives::OnlineReps,
-    transport::MessageFlooder,
-};
+use std::sync::{Arc, Mutex};
 use tracing::warn;
 
 pub struct LedgerSnapshots {
@@ -206,7 +206,8 @@ mod tests {
         let frontier1 = BlockHash::from(100);
         let account2 = Account::from(2);
         let frontier2 = BlockHash::from(200);
-        let ledger_snapshots = LedgerSnapshots::new_test_instance([(account1, frontier1), (account2, frontier2)]);
+        let ledger_snapshots =
+            LedgerSnapshots::new_test_instance([(account1, frontier1), (account2, frontier2)]);
 
         assert_eq!(
             ledger_snapshots.collect_frontiers(),
@@ -300,7 +301,7 @@ mod tests {
         let ledger_snapshots = LedgerSnapshots::new_null();
         let proposal = Proposal::new_test_instance();
         let receive_proposal_tracker = ledger_snapshots.track_received_proposals();
-        
+
         ledger_snapshots.handle_proposal(proposal.clone());
         let receive_events = receive_proposal_tracker.output();
 
@@ -319,8 +320,7 @@ mod tests {
         ledger_snapshots.handle_proposal(proposal.clone());
 
         let flood_events = flood_tracker.output();
-        let expected_vote =
-            ProposalVote::new(proposal.hash(), &private_key, snapshot_number);
+        let expected_vote = ProposalVote::new(proposal.hash(), &private_key, snapshot_number);
 
         assert_eq!(flood_events.len(), 1, "Should flood the message");
         assert_eq!(
@@ -362,10 +362,10 @@ mod tests {
         let ledger_snapshots = LedgerSnapshots::new_null();
         let receive_vote_tracker = ledger_snapshots.track_received_votes();
         let vote = ProposalVote::new_test_instance();
-        
+
         ledger_snapshots.handle_vote(vote.clone());
         let receive_events = receive_vote_tracker.output();
-        
+
         assert_eq!(receive_events.len(), 1, "Should receive proposal vote");
         assert_eq!(receive_events[0], vote);
     }
