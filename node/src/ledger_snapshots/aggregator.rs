@@ -124,7 +124,7 @@ mod tests {
     }
 
     #[test]
-    fn reach_quantitative_quorum() {
+    fn reach_quorum() {
         let rep_key1 = PrivateKey::from(1);
         let rep_key2 = PrivateKey::from(2);
 

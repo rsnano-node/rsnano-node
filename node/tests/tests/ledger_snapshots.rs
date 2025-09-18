@@ -31,7 +31,7 @@ fn publish_preproposal_integration_test() {
     assert_peered_principal_reps(&node1, 2);
     assert_peered_principal_reps(&node2, 2);
 
-    node1.ledger_snapshots.publish_preproposal();
+    node1.ledger_snapshots.start_ledger_snapshot();
 
     assert_message_received(&node1, MessageType::Preproposal, 1);
     assert_message_received(&node2, MessageType::Preproposal, 1);

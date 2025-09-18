@@ -198,15 +198,15 @@ impl NetworkMessageProcessor {
             }
             #[cfg(feature = "ledger_snapshots")]
             Message::SnapshotPreproposal(preproposal) => {
-                self.ledger_snapshots.receive_preproposal(preproposal);
+                self.ledger_snapshots.handle_preproposal(preproposal);
             }
             #[cfg(feature = "ledger_snapshots")]
             Message::SnapshotProposal(proposal) => {
-                self.ledger_snapshots.receive_proposal(proposal);
+                self.ledger_snapshots.handle_proposal(proposal);
             }
             #[cfg(feature = "ledger_snapshots")]
             Message::SnapshotProposalVote(proposal_vote) => {
-                self.ledger_snapshots.receive_proposal_vote(proposal_vote);
+                self.ledger_snapshots.handle_vote(proposal_vote);
             }
         }
     }
@@ -256,7 +256,7 @@ mod tests {
         use rsnano_messages::ProposalVote;
 
         let ledger_snapshots: LedgerSnapshots = LedgerSnapshots::new_null();
-        let receive_tracker = ledger_snapshots.track_received_proposal_votes();
+        let receive_tracker = ledger_snapshots.track_received_votes();
         let network_message_processor = create_network_message_processor(ledger_snapshots);
         let proposal_vote = ProposalVote::new_test_instance();
 

@@ -1,18 +1,18 @@
 mod aggregator;
-mod ledger_snapshots_state;
+mod state;
 
-use crate::{
-    ledger_snapshots::{aggregator::Aggregator, ledger_snapshots_state::LedgerSnapshotsState},
-    representatives::OnlineReps,
-    transport::MessageFlooder,
-};
+use std::sync::{Arc, Mutex};
 use rsnano_ledger::Ledger;
 use rsnano_messages::{Aggregatable, Message, Preproposal, Proposal, ProposalVote};
 use rsnano_network::TrafficType;
 use rsnano_output_tracker::{OutputListenerMt, OutputTrackerMt};
 use rsnano_types::{Account, BlockHash};
 use rsnano_types::{PrivateKey, SnapshotNumber};
-use std::sync::{Arc, Mutex};
+use crate::{
+    ledger_snapshots::{aggregator::Aggregator, state::State},
+    representatives::OnlineReps,
+    transport::MessageFlooder,
+};
 use tracing::warn;
 
 pub struct LedgerSnapshots {
@@ -24,8 +24,8 @@ pub struct LedgerSnapshots {
     flooder: Mutex<MessageFlooder>,
     receive_preproposal_listener: OutputListenerMt<Preproposal>,
     receive_proposal_listener: OutputListenerMt<Proposal>,
-    receive_proposal_vote_listener: OutputListenerMt<ProposalVote>,
-    state: Mutex<LedgerSnapshotsState>,
+    receive_vote_listener: OutputListenerMt<ProposalVote>,
+    state: Mutex<State>,
     online_reps: Arc<Mutex<OnlineReps>>,
 }
 
@@ -42,7 +42,7 @@ impl LedgerSnapshots {
             flooder: flooder.into(),
             receive_preproposal_listener: OutputListenerMt::new(),
             receive_proposal_listener: OutputListenerMt::new(),
-            receive_proposal_vote_listener: OutputListenerMt::new(),
+            receive_vote_listener: OutputListenerMt::new(),
             state: Default::default(),
             online_reps,
         }
@@ -69,17 +69,13 @@ impl LedgerSnapshots {
         )
     }
 
-    pub fn publish_preproposal(&self) {
+    pub fn start_ledger_snapshot(&self) {
         warn!("Preproposal generation triggered");
         // TODO add test for no private key
         let private_key = (self.get_private_key)().unwrap();
         let preproposal = self.create_preproposal(&private_key);
         let message = Message::SnapshotPreproposal(preproposal);
-        self.flooder.lock().unwrap().flood_prs_and_some_non_prs(
-            &message,
-            TrafficType::LedgerSnapshots,
-            0.0,
-        );
+        self.publish_message(&message);
     }
 
     fn create_preproposal(&self, private_key: &PrivateKey) -> Preproposal {
@@ -91,7 +87,7 @@ impl LedgerSnapshots {
         self.ledger.confirmed().frontiers().collect()
     }
 
-    pub fn receive_preproposal(&self, preproposal: Preproposal) {
+    pub fn handle_preproposal(&self, preproposal: Preproposal) {
         warn!(preproposal_hash= ?preproposal.hash(), "Snapshot preproposal received");
         self.receive_preproposal_listener.emit(preproposal.clone());
         let consensus_params = self.online_reps.lock().unwrap().get_consensus_params();
@@ -118,11 +114,7 @@ impl LedgerSnapshots {
 
         if let Some(proposal) = proposal {
             warn!(proposal_hash = ?proposal.hash(), "Created proposal. Flooding...");
-            self.flooder.lock().unwrap().flood_prs_and_some_non_prs(
-                &Message::SnapshotProposal(proposal),
-                TrafficType::LedgerSnapshots,
-                0.0,
-            );
+            self.publish_message(&Message::SnapshotProposal(proposal));
         };
     }
 
@@ -130,7 +122,7 @@ impl LedgerSnapshots {
         self.receive_preproposal_listener.track()
     }
 
-    pub fn receive_proposal(&self, proposal: Proposal) {
+    pub fn handle_proposal(&self, proposal: Proposal) {
         warn!(proposal_hash = ?proposal.hash(), "Snapshot proposal received");
         self.receive_proposal_listener.emit(proposal.clone());
         let consensus_params = self.online_reps.lock().unwrap().get_consensus_params();
@@ -150,11 +142,7 @@ impl LedgerSnapshots {
         if let Some(vote) = state.try_create_vote(&consensus_params, &rep_key) {
             warn!("Quorum on proposal reached");
             warn!(vote_hash = ?vote.hash(), "Flooding proposal vote");
-            self.flooder.lock().unwrap().flood_prs_and_some_non_prs(
-                &Message::SnapshotProposalVote(vote),
-                TrafficType::LedgerSnapshots,
-                0.0,
-            );
+            self.publish_message(&Message::SnapshotProposalVote(vote));
         }
     }
 
@@ -162,19 +150,18 @@ impl LedgerSnapshots {
         self.receive_proposal_listener.track()
     }
 
-    pub fn track_received_proposal_votes(&self) -> Arc<OutputTrackerMt<ProposalVote>> {
-        self.receive_proposal_vote_listener.track()
+    pub fn track_received_votes(&self) -> Arc<OutputTrackerMt<ProposalVote>> {
+        self.receive_vote_listener.track()
     }
 
-    pub fn receive_proposal_vote(&self, proposal_vote: ProposalVote) {
-        self.receive_proposal_vote_listener
-            .emit(proposal_vote.clone());
+    pub fn handle_vote(&self, vote: ProposalVote) {
+        self.receive_vote_listener.emit(vote.clone());
 
         let consensus_params = self.online_reps.lock().unwrap().get_consensus_params();
         let mut state = self.state.lock().unwrap();
 
-        if !state.receive_vote(proposal_vote.clone(), &consensus_params) {
-            warn!(proposal_vote_hash= ?proposal_vote.hash(), snapshot_number= ?proposal_vote.snapshot_number, "Snapshot proposal vote discarded because snapshot number is different than current");
+        if !state.receive_vote(vote.clone(), &consensus_params) {
+            warn!(vote_hash= ?vote.hash(), snapshot_number= ?vote.snapshot_number, "Snapshot vote discarded because snapshot number is different than current");
             return;
         }
 
@@ -186,6 +173,14 @@ impl LedgerSnapshots {
 
     fn get_current_snapshot_number(&self) -> SnapshotNumber {
         self.state.lock().unwrap().current_snapshot_number
+    }
+
+    fn publish_message(&self, message: &Message) {
+        self.flooder.lock().unwrap().flood_prs_and_some_non_prs(
+            message,
+            TrafficType::LedgerSnapshots,
+            0.0,
+        );
     }
 }
 
@@ -238,7 +233,7 @@ mod tests {
         let ledger_snapshots = LedgerSnapshots::new_test_instance([]);
         let flood_tracker = ledger_snapshots.flooder.lock().unwrap().track_floods();
 
-        ledger_snapshots.publish_preproposal();
+        ledger_snapshots.start_ledger_snapshot();
 
         let flood_events = flood_tracker.output();
         let expected_preproposal =
@@ -263,7 +258,7 @@ mod tests {
         let receive_preproposal_tracker = ledger_snapshots.track_received_preproposals();
         let preproposal = Preproposal::new_test_instance();
 
-        ledger_snapshots.receive_preproposal(preproposal.clone());
+        ledger_snapshots.handle_preproposal(preproposal.clone());
         let receive_events = receive_preproposal_tracker.output();
 
         assert_eq!(receive_events.len(), 1, "Should receive preproposal");
@@ -278,7 +273,7 @@ mod tests {
         let snapshot_number = ledger_snapshots.get_current_snapshot_number();
 
         let preproposal = Preproposal::new(vec![], &private_key, snapshot_number);
-        ledger_snapshots.receive_preproposal(preproposal.clone());
+        ledger_snapshots.handle_preproposal(preproposal.clone());
 
         let flood_events = flood_tracker.output();
         let expected_proposal = Proposal::new(&[preproposal], &private_key, snapshot_number);
@@ -306,7 +301,7 @@ mod tests {
         let proposal = Proposal::new_test_instance();
         let receive_proposal_tracker = ledger_snapshots.track_received_proposals();
         
-        ledger_snapshots.receive_proposal(proposal.clone());
+        ledger_snapshots.handle_proposal(proposal.clone());
         let receive_events = receive_proposal_tracker.output();
 
         assert_eq!(receive_events.len(), 1, "Should receive proposal");
@@ -314,24 +309,24 @@ mod tests {
     }
 
     #[test]
-    fn publish_proposal_vote_when_quorum_of_proposals_is_reached() {
+    fn publish_vote_when_quorum_of_proposals_is_reached() {
         let private_key = PrivateKey::new_test_instance();
         let ledger_snapshots = LedgerSnapshots::new_test_instance([]);
         let flood_tracker = ledger_snapshots.flooder.lock().unwrap().track_floods();
         let snapshot_number = ledger_snapshots.get_current_snapshot_number();
 
         let proposal = Proposal::new(vec![], &private_key, snapshot_number);
-        ledger_snapshots.receive_proposal(proposal.clone());
+        ledger_snapshots.handle_proposal(proposal.clone());
 
         let flood_events = flood_tracker.output();
-        let expected_proposal_vote =
+        let expected_vote =
             ProposalVote::new(proposal.hash(), &private_key, snapshot_number);
 
         assert_eq!(flood_events.len(), 1, "Should flood the message");
         assert_eq!(
             flood_events[0],
             FloodEvent {
-                message: Message::SnapshotProposalVote(expected_proposal_vote),
+                message: Message::SnapshotProposalVote(expected_vote),
                 traffic_type: TrafficType::LedgerSnapshots,
                 scale: 0.0,
                 all_prs: true,
@@ -345,7 +340,7 @@ mod tests {
     }
 
     #[test]
-    fn publish_proposal_vote_only_once() {
+    fn publish_vote_only_once() {
         let private_key = PrivateKey::new_test_instance();
         let ledger_snapshots = LedgerSnapshots::new_test_instance([]);
         let flood_tracker = ledger_snapshots.flooder.lock().unwrap().track_floods();
@@ -354,8 +349,8 @@ mod tests {
         let proposal1 = Proposal::new(vec![], &private_key, snapshot_number);
         let proposal2 = Proposal::new(vec![], &PrivateKey::from(2), snapshot_number);
 
-        ledger_snapshots.receive_proposal(proposal1.clone());
-        ledger_snapshots.receive_proposal(proposal2);
+        ledger_snapshots.handle_proposal(proposal1.clone());
+        ledger_snapshots.handle_proposal(proposal2);
 
         let flood_events = flood_tracker.output();
 
@@ -363,16 +358,16 @@ mod tests {
     }
 
     #[test]
-    fn can_track_received_proposal_votes() {
+    fn can_track_received_votes() {
         let ledger_snapshots = LedgerSnapshots::new_null();
-        let receive_proposal_vote_tracker = ledger_snapshots.track_received_proposal_votes();
-        let proposal_vote = ProposalVote::new_test_instance();
+        let receive_vote_tracker = ledger_snapshots.track_received_votes();
+        let vote = ProposalVote::new_test_instance();
         
-        ledger_snapshots.receive_proposal_vote(proposal_vote.clone());
-        let receive_events = receive_proposal_vote_tracker.output();
+        ledger_snapshots.handle_vote(vote.clone());
+        let receive_events = receive_vote_tracker.output();
         
         assert_eq!(receive_events.len(), 1, "Should receive proposal vote");
-        assert_eq!(receive_events[0], proposal_vote);
+        assert_eq!(receive_events[0], vote);
     }
 
     #[test]
