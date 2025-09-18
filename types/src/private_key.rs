@@ -60,6 +60,10 @@ impl PrivateKey {
         Default::default()
     }
 
+    pub fn new_test_instance() -> Self {
+        PrivateKey::from(1)
+    }
+
     pub fn zero() -> Self {
         Self::from_bytes(&[0u8; 32])
     }

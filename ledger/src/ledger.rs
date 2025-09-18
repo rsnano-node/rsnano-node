@@ -119,6 +119,28 @@ pub struct Ledger {
     pub(crate) stats: Arc<Stats>,
 }
 
+impl Ledger {
+    pub fn new_test_instance(
+        frontiers: impl IntoIterator<Item = (Account, BlockHash)>,
+    ) -> Arc<Ledger> {
+        let mut builder = Ledger::new_null_builder();
+
+        for (account, frontier) in frontiers {
+            builder = builder
+                .account_info(&account, &AccountInfo::new_test_instance())
+                .confirmation_height(
+                    &account,
+                    &ConfirmationHeightInfo {
+                        height: 0,
+                        frontier,
+                    },
+                );
+        }
+
+        builder.finish().into()
+    }
+}
+
 pub struct NullLedgerBuilder {
     blocks: ConfiguredBlockDatabaseBuilder,
     accounts: ConfiguredAccountDatabaseBuilder,

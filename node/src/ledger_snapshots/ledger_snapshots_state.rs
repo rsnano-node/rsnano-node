@@ -303,4 +303,39 @@ mod tests {
 
         assert_eq!(state.find_winner_proposal(&params), Some(proposal_hash));
     }
+
+    #[test]
+    fn a_received_preproposal_is_added_to_the_preproposal_aggregator() {
+        let mut state = LedgerSnapshotsState::default();
+        let snapshot_number = state.current_snapshot_number;
+        let preproposal = Preproposal::new(vec![], &PrivateKey::from(1), snapshot_number);
+
+        state.receive_preproposal(preproposal.clone());
+
+        assert!(state.preproposal_aggregator.contains(&preproposal.hash()));
+    }
+
+    #[test]
+    fn a_received_proposal_is_added_to_the_proposal_aggregator() {
+        let mut state = LedgerSnapshotsState::default();
+        let proposal = Proposal::new(vec![], &PrivateKey::from(1), state.current_snapshot_number);
+
+        state.receive_proposal(proposal.clone());
+
+        assert!(state.proposal_aggregator.contains(&proposal.hash()));
+    }
+
+    #[test]
+    fn a_received_proposal_vote_is_added_to_the_proposal_vote_aggregator() {
+        let mut state = LedgerSnapshotsState::default();
+        let proposal_vote = ProposalVote::new(
+            ProposalHash::from(1),
+            &PrivateKey::from(1),
+            state.current_snapshot_number,
+        );
+
+        state.receive_vote(proposal_vote.clone(), &ConsensusParams::default());
+
+        assert!(state.vote_aggregator.contains(&proposal_vote.hash()));
+    }
 }

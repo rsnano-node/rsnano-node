@@ -87,6 +87,20 @@ impl OnlineReps {
         online_reps
     }
 
+    pub fn new_test_instance2(public_key: PublicKey) -> Self {
+        let mut rep_weights = RepWeights::new();
+        let quorum_weight = Amount::nano(100_000);
+        rep_weights.insert(public_key, quorum_weight);
+        let mut online_reps = OnlineReps::new(
+            Arc::new(rep_weights.into()),
+            Duration::ZERO,
+            Amount::ZERO,
+            Amount::ZERO,
+        );
+        online_reps.set_trended(quorum_weight / ONLINE_WEIGHT_QUORUM as u128 * 100);
+        online_reps
+    }
+
     pub fn builder() -> OnlineRepsBuilder {
         OnlineRepsBuilder::new()
     }
