@@ -67,6 +67,7 @@ pub use timestamp::{UnixMillisTimestamp, UnixTimestamp, milliseconds_since_epoch
 pub use vote::{TestVoteBuilder, Vote, VoteError, VoteSource};
 pub use vote_timestamp::VoteTimestamp;
 
+#[cfg(feature = "ledger_snapshots")]
 pub type SnapshotNumber = u32;
 
 pub fn write_hex_bytes(bytes: &[u8], f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {

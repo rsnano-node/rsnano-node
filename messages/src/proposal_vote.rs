@@ -1,8 +1,10 @@
 use crate::{Aggregatable, MessageVariant, ProposalHash};
 use bitvec::prelude::BitArray;
+#[cfg(feature = "ledger_snapshots")]
+use rsnano_types::SnapshotNumber;
 use rsnano_types::{
     Blake2Hash, Blake2HashBuilder, DeserializationError, PrivateKey, PublicKey, Signature,
-    SnapshotNumber, read_u32_be,
+    read_u32_be,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]

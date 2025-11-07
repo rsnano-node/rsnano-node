@@ -5,6 +5,9 @@ edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+ledger_snapshots = []
+
 [dependencies]
 rsnano_nullable_random = { path = "../nullables/random" }
 rand = { version = "0.9.2" }
@@ -26,3 +29,4 @@ chrono = "0"
 strum = "0"
 strum_macros = "0"
 thiserror = "2.0.16"
+

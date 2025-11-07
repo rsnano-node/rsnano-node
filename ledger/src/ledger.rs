@@ -19,10 +19,11 @@ use rsnano_store_lmdb::{
     ConfiguredConfirmationHeightDatabaseBuilder, ConfiguredPeersDatabaseBuilder,
     ConfiguredPendingDatabaseBuilder, LmdbStore, MemoryStats,
 };
+#[cfg(feature = "ledger_snapshots")]
+use rsnano_types::SnapshotNumber;
 use rsnano_types::{
     Account, AccountInfo, Amount, Block, BlockHash, ConfirmationHeightInfo, Epoch, Link,
-    PendingInfo, PendingKey, PublicKey, QualifiedRoot, Root, SavedBlock, SnapshotNumber,
-    UnixTimestamp,
+    PendingInfo, PendingKey, PublicKey, QualifiedRoot, Root, SavedBlock, UnixTimestamp,
 };
 use rsnano_utils::{
     container_info::{ContainerInfo, ContainerInfoProvider},
