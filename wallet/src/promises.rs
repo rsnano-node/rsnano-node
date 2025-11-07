@@ -40,12 +40,16 @@ impl BlockPromise {
 
     pub fn wait_timeout(&self, timeout: Duration) -> Result<SavedBlock, WalletsError> {
         let result_guard = self.state.lock().unwrap();
-        self.done_notification
+        let (guard, timeout_result) = self
+            .done_notification
             .wait_timeout_while(result_guard, timeout, |i| !i.done)
-            .unwrap()
-            .0
-            .result
-            .clone()
+            .unwrap();
+
+        if timeout_result.timed_out() {
+            return Err(WalletsError::Generic);
+        }
+
+        guard.result.clone()
     }
 
     pub fn wait(&self) -> Result<SavedBlock, WalletsError> {
@@ -108,9 +112,18 @@ impl MultiBlockPromise {
     }
 
     pub fn wait_timeout(&self, timeout: Duration) -> Result<Vec<SavedBlock>, WalletsError> {
-        self.children
-            .iter()
-            .map(|c| c.wait_timeout(timeout))
-            .collect()
+        let start = std::time::Instant::now();
+        let mut results = Vec::new();
+
+        for child in &self.children {
+            let elapsed = start.elapsed();
+            if elapsed >= timeout {
+                return Err(WalletsError::Generic);
+            }
+            let remaining = timeout - elapsed;
+            results.push(child.wait_timeout(remaining)?);
+        }
+
+        Ok(results)
     }
 }
