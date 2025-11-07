@@ -351,9 +351,15 @@ mod tests {
     }
 
     async fn start_test_tcp_server(endpoint: SocketAddr) {
-        let listener = TcpListener::bind(endpoint).await.unwrap();
+        use tokio::sync::oneshot;
+
+        let (tx, rx) = oneshot::channel();
 
         spawn(async move {
+            let listener = TcpListener::bind(endpoint).await.unwrap();
+            // Signal that the server is now listening
+            tx.send(()).ok();
+
             let (socket, _) = listener.accept().await.unwrap();
             loop {
                 socket.writable().await.unwrap();
@@ -370,5 +376,8 @@ mod tests {
                 }
             }
         });
+
+        // Wait for the server to be ready before returning
+        rx.await.expect("server failed to start");
     }
 }
