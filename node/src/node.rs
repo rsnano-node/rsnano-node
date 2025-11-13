@@ -1,6 +1,4 @@
 use std::{
-    fs::Permissions,
-    os::unix::fs::PermissionsExt,
     path::PathBuf,
     sync::{
         Arc, Mutex, MutexGuard, RwLock,
@@ -8,6 +6,12 @@ use std::{
         mpsc::{self, Receiver, SyncSender},
     },
     time::Duration,
+};
+
+#[cfg(unix)]
+use std::{
+    fs::Permissions,
+    os::unix::fs::PermissionsExt,
 };
 
 use bounded_vec_deque::BoundedVecDeque;
@@ -299,6 +303,7 @@ impl Node {
         if !fs.exists(&application_path) {
             fs.create_dir_all(&application_path)
                 .expect("Could not create data dir");
+            #[cfg(unix)]
             fs.set_permissions(&application_path, Permissions::from_mode(0o700))
                 .expect("Could not set data dir permissions");
         }

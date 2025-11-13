@@ -37,7 +37,9 @@ network, this makes Nano ideal for everyday transactions.
 
 ## Option 3: Build from source
 
-Currently you can only build RsNano on Linux and on Mac.
+RSNano can be built on Linux, Mac, and Windows.
+
+### Building on Linux/Mac
 
 To just build and run the rsnano_node:
 
@@ -54,6 +56,15 @@ To install and run the rsnano_node executable:
     cd rsnano-node
     cargo install --path main
     rsnano_node --network=live node run
+### Building on Windows
+
+To build and run on Windows:
+
+    git clone https://github.com/simpago/rsnano-node.git
+    git switch releases/v2
+    cd rsnano-node
+    cargo build --release
+    cargo run --release --bin rsnano_node -- --network=live node run
 
 ## Running it with a GUI
 

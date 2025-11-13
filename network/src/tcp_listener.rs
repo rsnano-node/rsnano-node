@@ -1,6 +1,6 @@
 use crate::{ChannelDirection, TcpNetworkAdapter};
 use async_trait::async_trait;
-use rsnano_nullable_tcp::TcpStream;
+use rsnano_nullable_tcp::{TcpSocket, TcpStream};
 use std::{
     net::{IpAddr, Ipv6Addr, SocketAddr, SocketAddrV6},
     sync::{
@@ -97,15 +97,35 @@ impl TcpListenerExt for Arc<TcpListener> {
         let self_l = Arc::clone(self);
         self.tokio.spawn(async move {
             let port = self_l.port.load(Ordering::SeqCst);
-            let Ok(listener) = tokio::net::TcpListener::bind(SocketAddr::new(
+
+            // Create an IPv6 socket
+            // On Windows, TcpSocket::new_v6() automatically enables dual-stack support (IPv4 + IPv6)
+            // On Unix, it uses system defaults which typically enable dual-stack
+            let socket = match TcpSocket::new_v6() {
+                Ok(s) => s,
+                Err(e) => {
+                    self_l.data.lock().unwrap().started = true;
+                    self_l.started.notify_all();
+                    error!("Error creating socket for incoming connections: {}", e);
+                    return;
+                }
+            };
+
+            // Bind to the port
+            if let Err(e) = socket.bind(SocketAddr::new(
                 IpAddr::V6(Ipv6Addr::UNSPECIFIED),
                 port,
-            ))
-            .await
-            else {
+            )) {
                 self_l.data.lock().unwrap().started = true;
                 self_l.started.notify_all();
-                error!("Error while binding for incoming connections on: {}", port);
+                error!("Error while binding for incoming connections on port {}: {}", port, e);
+                return;
+            }
+
+            let Ok(listener) = socket.listen(1024) else {
+                self_l.data.lock().unwrap().started = true;
+                self_l.started.notify_all();
+                error!("Error while listening for incoming connections on: {}", port);
                 return;
             };
 

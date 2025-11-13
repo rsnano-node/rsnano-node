@@ -1,10 +1,14 @@
 use std::{
     collections::{HashMap, HashSet},
-    fs::Permissions,
     mem::size_of,
-    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, mpsc},
+};
+
+#[cfg(unix)]
+use std::{
+    fs::Permissions,
+    os::unix::fs::PermissionsExt,
 };
 
 use rand::{Rng, seq::IndexedRandom};
@@ -523,6 +527,7 @@ impl Wallets {
         let txn = self.env.begin_read();
         for (id, wallet) in guard.iter() {
             std::fs::create_dir_all(path)?;
+            #[cfg(unix)]
             std::fs::set_permissions(path, Permissions::from_mode(0o700))?;
             let mut backup_path = PathBuf::from(path);
             backup_path.push(format!("{}.json", id));

@@ -1,10 +1,15 @@
 use std::{
-    fs::{File, Permissions, set_permissions},
+    fs::File,
     io::{Read, Write},
     ops::RangeBounds,
-    os::unix::prelude::PermissionsExt,
     path::Path,
     sync::{Mutex, MutexGuard},
+};
+
+#[cfg(unix)]
+use std::{
+    fs::{Permissions, set_permissions},
+    os::unix::prelude::PermissionsExt,
 };
 
 use anyhow::bail;
@@ -622,6 +627,7 @@ impl LmdbWalletStore {
 
     pub fn write_backup(&self, txn: &dyn Transaction, path: &Path) -> anyhow::Result<()> {
         let mut file = File::create(path)?;
+        #[cfg(unix)]
         set_permissions(path, Permissions::from_mode(0o600))?;
         write!(file, "{}", self.serialize_json(txn))?;
         Ok(())
