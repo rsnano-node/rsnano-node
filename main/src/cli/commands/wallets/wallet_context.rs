@@ -21,7 +21,10 @@ impl WalletContext {
 
     pub(crate) fn new(node: Node, wallet: &str, password: String) -> Result<Self> {
         let wallet_id = WalletId::decode_hex(wallet).ok_or_else(|| anyhow!("Invalid wallet id"))?;
+        Self::from_existing(node, wallet_id, password)
+    }
 
+    pub(crate) fn from_existing(node: Node, wallet_id: WalletId, password: String) -> Result<Self> {
         if !node.wallets.wallet_exists(&wallet_id) {
             return Err(anyhow!("Wallet not found"));
         }

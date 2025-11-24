@@ -5,6 +5,7 @@ use clap::Parser;
 
 use rsnano_types::WalletId;
 
+use crate::cli::commands::wallets::WalletContext;
 use crate::cli::{GlobalArgs, build_node};
 
 #[derive(Parser, PartialEq, Debug)]
@@ -36,20 +37,20 @@ impl ImportKeysArgs {
             WalletId::decode_hex(&self.wallet).ok_or_else(|| anyhow!("Invalid wallet id"))?;
         let password = self.password.clone().unwrap_or_default();
 
-        node.wallets.ensure_wallet_is_unlocked(wallet_id, &password);
-
         if node.wallets.wallet_exists(&wallet_id) {
-            let valid = node.wallets.ensure_wallet_is_unlocked(wallet_id, &password);
-            if valid {
-                node.wallets
-                    .import_replace(wallet_id, &contents, &password)?
-            } else {
-                eprintln!(
-                    "Invalid password for wallet {}. New wallet should have empty (default) password or passwords for new wallet & json file should match",
-                    wallet_id
-                );
-                return Err(anyhow!("Invalid arguments"));
-            }
+            let context = match WalletContext::from_existing(node, wallet_id, password.clone()) {
+                Ok(ctx) => ctx,
+                Err(_) => {
+                    eprintln!(
+                        "Invalid password for wallet {}. New wallet should have empty (default) password or passwords for new wallet & json file should match",
+                        wallet_id
+                    );
+                    return Err(anyhow!("Invalid arguments"));
+                }
+            };
+            let (node, wallet_id) = context.into_parts();
+            node.wallets
+                .import_replace(wallet_id, &contents, &password)?
         } else if !self.force {
             eprintln!("Wallet doesn't exist");
             return Err(anyhow!("Invalid arguments"));
