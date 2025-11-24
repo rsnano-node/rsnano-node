@@ -1,7 +1,8 @@
-use crate::cli::{GlobalArgs, build_node};
+use crate::cli::GlobalArgs;
+use crate::cli::commands::wallets::WalletContext;
 use anyhow::anyhow;
 use clap::Parser;
-use rsnano_types::{RawKey, WalletId};
+use rsnano_types::RawKey;
 
 #[derive(Parser, PartialEq, Debug)]
 pub(crate) struct ChangeWalletSeedArgs {
@@ -18,13 +19,9 @@ pub(crate) struct ChangeWalletSeedArgs {
 
 impl ChangeWalletSeedArgs {
     pub(crate) fn change_wallet_seed(&self, global_args: GlobalArgs) -> anyhow::Result<()> {
-        let node = build_node(&global_args)?;
-        let wallet_id =
-            WalletId::decode_hex(&self.wallet).ok_or_else(|| anyhow!("Invalid wallet id"))?;
+        let context = WalletContext::from_args(&global_args, &self.wallet, &self.password)?;
+        let (node, wallet_id) = context.into_parts();
         let seed = RawKey::decode_hex(&self.seed).ok_or_else(|| anyhow!("Invalid seed"))?;
-        let password = self.password.clone().unwrap_or_default();
-
-        node.wallets.ensure_wallet_is_unlocked(wallet_id, &password);
 
         node.wallets
             .change_seed(wallet_id, &seed, 0)

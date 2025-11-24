@@ -1,7 +1,8 @@
-use crate::cli::{GlobalArgs, build_node};
+use crate::cli::GlobalArgs;
+use crate::cli::commands::wallets::WalletContext;
 use anyhow::anyhow;
 use clap::Parser;
-use rsnano_types::{Account, WalletId};
+use rsnano_types::Account;
 
 #[derive(Parser, PartialEq, Debug)]
 pub(crate) struct CreateAccountArgs {
@@ -15,12 +16,8 @@ pub(crate) struct CreateAccountArgs {
 
 impl CreateAccountArgs {
     pub(crate) fn create_account(&self, global_args: GlobalArgs) -> anyhow::Result<()> {
-        let node = build_node(&global_args)?;
-        let wallet =
-            WalletId::decode_hex(&self.wallet).ok_or_else(|| anyhow!("Invalid wallet id"))?;
-        let password = self.password.clone().unwrap_or_default();
-
-        node.wallets.ensure_wallet_is_unlocked(wallet, &password);
+        let context = WalletContext::from_args(&global_args, &self.wallet, &self.password)?;
+        let (node, wallet) = context.into_parts();
 
         let public_key = node
             .wallets

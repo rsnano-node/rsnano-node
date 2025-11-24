@@ -8,6 +8,7 @@ mod get_wallet_representative;
 mod import_keys;
 mod remove_account;
 mod set_wallet_representative;
+mod wallet_context;
 
 use crate::cli::{GlobalArgs, build_node};
 use add_private_key::AddPrivateKeyArgs;
@@ -23,6 +24,7 @@ use import_keys::ImportKeysArgs;
 use remove_account::RemoveAccountArgs;
 use rsnano_types::Account;
 use set_wallet_representative::SetWalletRepresentativeArgs;
+pub(crate) use wallet_context::WalletContext;
 
 #[derive(Parser, PartialEq, Debug)]
 pub(crate) struct WalletsCommand {

@@ -1,7 +1,8 @@
-use crate::cli::{GlobalArgs, build_node};
+use crate::cli::GlobalArgs;
+use crate::cli::commands::wallets::WalletContext;
 use anyhow::anyhow;
 use clap::Parser;
-use rsnano_types::{Account, WalletId};
+use rsnano_types::Account;
 
 #[derive(Parser, PartialEq, Debug)]
 pub(crate) struct GetWalletRepresentativeArgs {
@@ -15,12 +16,8 @@ pub(crate) struct GetWalletRepresentativeArgs {
 
 impl GetWalletRepresentativeArgs {
     pub(crate) fn get_wallet_representative(&self, global_args: GlobalArgs) -> anyhow::Result<()> {
-        let node = build_node(&global_args)?;
-        let wallet_id =
-            WalletId::decode_hex(&self.wallet).ok_or_else(|| anyhow!("Invalid wallet id"))?;
-        let password = self.password.clone().unwrap_or_default();
-
-        node.wallets.ensure_wallet_is_unlocked(wallet_id, &password);
+        let context = WalletContext::from_args(&global_args, &self.wallet, &self.password)?;
+        let (node, wallet_id) = context.into_parts();
 
         let representative = node
             .wallets
