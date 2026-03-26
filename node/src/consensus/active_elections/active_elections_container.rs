@@ -4,7 +4,7 @@ use strum::EnumCount;
 
 use rsnano_ledger::RepWeights;
 use rsnano_nullable_clock::Timestamp;
-use rsnano_types::{Amount, Block, BlockHash, PublicKey, QualifiedRoot, SavedBlock, TimePriority};
+use rsnano_types::{Amount, Block, BlockHash, PublicKey, QualifiedRoot, SavedBlock};
 use rsnano_utils::{
     container_info::{ContainerInfo, ContainerInfoProvider},
     stats::{StatsCollection, StatsSource},
@@ -16,6 +16,7 @@ use crate::{
             AddForkResult, ConfirmationType, ConfirmedElection, Election, ElectionBehavior,
             VoteType,
         },
+        election_schedulers::priority::PriorityBucketState,
         filtered_vote::FilteredVote,
     },
     representatives::QuorumSpecs,
@@ -67,16 +68,17 @@ impl ActiveElectionsContainer {
         &mut self.count_by_behavior[behavior as usize]
     }
 
-    pub fn bucket_len(&self, bucket_id: usize) -> usize {
-        self.roots.bucket_len(bucket_id)
-    }
-
-    pub fn find_bucket(&self, root: &QualifiedRoot) -> Option<usize> {
-        self.roots.find_bucket(root)
-    }
-
-    pub fn lowest_priority(&self, bucket_id: usize) -> Option<(QualifiedRoot, TimePriority)> {
-        self.roots.lowest_priority(bucket_id)
+    pub(crate) fn priority_bucket_state(
+        &self,
+        bucket_id: usize,
+        candidate_root: &QualifiedRoot,
+    ) -> PriorityBucketState {
+        PriorityBucketState {
+            active_len: self.roots.bucket_len(bucket_id),
+            contains_candidate: self.is_active_root(candidate_root),
+            lowest: self.roots.lowest_priority(bucket_id),
+            vacancy: self.vacancy(),
+        }
     }
 
     pub fn iter_round_robin(&self) -> impl Iterator<Item = &Election> {
@@ -295,13 +297,6 @@ impl ActiveElectionsContainer {
             return None;
         };
         Some(self.cleanup_election(entry).into())
-    }
-
-    pub(crate) fn erase_lowest_prio_election(&mut self, bucket_id: usize) -> AecFacts {
-        let Some((root, _)) = self.lowest_priority(bucket_id) else {
-            return AecFacts::new();
-        };
-        self.erase(&root).unwrap_or_default()
     }
 
     fn cleanup_election(&mut self, entry: Entry) -> AecFact {

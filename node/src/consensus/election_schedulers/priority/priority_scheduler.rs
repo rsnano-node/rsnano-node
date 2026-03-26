@@ -20,7 +20,7 @@ use super::{
     prio_bucket_index,
 };
 use crate::consensus::{
-    AecService,
+    AecInsertError, AecService,
     election_schedulers::priority::{BucketInsertError, Eviction},
 };
 
@@ -32,7 +32,6 @@ pub struct PriorityScheduler {
     thread: Mutex<Option<JoinHandle<()>>>,
     bucket_stats: BucketStats,
     aec_service: Arc<AecService>,
-    clock: Arc<SteadyClock>,
     activate_successors_listener: OutputListenerMt<SavedBlock>,
     activations_per_bucket: Vec<AtomicU64>,
 }
@@ -42,7 +41,7 @@ impl PriorityScheduler {
         config: PriorityBucketConfig,
         stats: Arc<Stats>,
         aec_service: Arc<AecService>,
-        clock: Arc<SteadyClock>,
+        _clock: Arc<SteadyClock>,
     ) -> Self {
         let mut buckets = Vec::with_capacity(prio_bucket_count());
         let mut activations_per_bucket = Vec::with_capacity(prio_bucket_count());
@@ -59,7 +58,6 @@ impl PriorityScheduler {
             stats,
             bucket_stats: BucketStats::default(),
             aec_service,
-            clock,
             activate_successors_listener: Default::default(),
             activations_per_bucket,
         }
@@ -210,22 +208,85 @@ impl PriorityScheduler {
 
     fn predicate(&self) -> bool {
         let buckets = self.buckets.lock().unwrap();
-        buckets.iter().any(|b| b.available(&*self.aec_service))
+        buckets.iter().enumerate().any(|(bucket_id, bucket)| {
+            let Some(top) = bucket.blocks().next() else {
+                return false;
+            };
+            let state = self.priority_bucket_state(bucket_id, &top.qualified_root());
+            bucket.available(&state)
+        })
     }
 
     fn run_one(&self) {
         self.stats
             .inc(StatType::ElectionScheduler, DetailType::Loop);
 
-        let now = self.clock.now();
         let mut buckets = self.buckets.lock().unwrap();
         let mut inserted = true;
 
         while inserted {
             inserted = false;
-            for bucket in buckets.iter_mut().rev() {
-                bucket.activate(&*self.aec_service, now, &self.bucket_stats);
+            for (bucket_id, bucket) in buckets.iter_mut().enumerate().rev() {
+                inserted |= self.activate_bucket(bucket_id, bucket);
             }
+        }
+    }
+
+    fn priority_bucket_state(
+        &self,
+        bucket_id: usize,
+        candidate_root: &rsnano_types::QualifiedRoot,
+    ) -> crate::consensus::election_schedulers::priority::PriorityBucketState {
+        self.aec_service
+            .priority_bucket_state(bucket_id, candidate_root)
+    }
+
+    fn activate_bucket(&self, bucket_id: usize, bucket: &mut Bucket) -> bool {
+        let Some(top) = bucket.blocks().next() else {
+            return false;
+        };
+
+        let state = self.priority_bucket_state(bucket_id, &top.qualified_root());
+        if !bucket.available(&state) {
+            return false;
+        }
+
+        let (block, priority) = bucket.pop_highest_priority().unwrap();
+
+        if state.contains_candidate {
+            self.bucket_stats
+                .activate_failed_duplicate
+                .fetch_add(1, Ordering::Relaxed);
+            return false;
+        }
+
+        if state.active_len >= bucket.reserved_elections()
+            && let Some((lowest_root, _)) = state.lowest
+        {
+            self.aec_service.erase(&lowest_root);
+            self.bucket_stats.replaced.fetch_add(1, Ordering::Relaxed);
+        }
+
+        match self.aec_service.insert_priority(block, priority) {
+            Ok(_) => {
+                self.bucket_stats
+                    .activate_success
+                    .fetch_add(1, Ordering::Relaxed);
+                true
+            }
+            Err(AecInsertError::RecentlyConfirmed) => {
+                self.bucket_stats
+                    .activate_failed_confirmed
+                    .fetch_add(1, Ordering::Relaxed);
+                false
+            }
+            Err(AecInsertError::Duplicate) => {
+                self.bucket_stats
+                    .activate_failed_duplicate
+                    .fetch_add(1, Ordering::Relaxed);
+                false
+            }
+            Err(AecInsertError::Stopped) => false,
         }
     }
 
