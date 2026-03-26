@@ -1,4 +1,5 @@
 mod active_elections_container;
+mod aec_service;
 mod apply_vote_helper;
 mod cooldown_controller;
 mod recently_confirmed_cache;
@@ -15,6 +16,7 @@ use super::{
     election::{ConfirmedElection, Election, ElectionBehavior},
 };
 pub use active_elections_container::*;
+pub(crate) use aec_service::*;
 pub use cooldown_controller::AecCooldownReason;
 use root_container::{Entry, RootContainer};
 
