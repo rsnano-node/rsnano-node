@@ -11,9 +11,10 @@ use rsnano_ledger::{
 use rsnano_node::{
     Node,
     config::{DEV_NETWORK_PARAMS, NodeConfig, NodeFlags},
+    unique_path,
 };
-use rsnano_nullable_lmdb::LmdbEnvironment;
-use rsnano_store_lmdb::LmdbWalletStore;
+use rsnano_nullable_lmdb::{LmdbEnvironment, LmdbEnvironmentFactory};
+use rsnano_store_lmdb::{EnvironmentFlags, EnvironmentOptions, LmdbWalletStore};
 use rsnano_types::{
     Account, Amount, Block, BlockHash, DEV_GENESIS_KEY, Epoch, EpochBlockArgs,
     KeyDerivationFunction, PrivateKey, PublicKey, RawKey, deterministic_key,
@@ -22,14 +23,34 @@ use rsnano_wallet::WalletsError;
 use test_helpers::{System, assert_always_eq, assert_timely_eq2, assert_timely2};
 
 struct TestFixture {
+    test_dir: PathBuf,
     env: LmdbEnvironment,
 }
 
 impl TestFixture {
     pub fn new() -> Self {
-        Self {
-            env: LmdbEnvironment::new_null(),
-        }
+        let test_dir = unique_path().unwrap();
+        let mut test_file = test_dir.clone();
+        test_file.push("wallet.ldb");
+
+        let options = EnvironmentOptions {
+            max_dbs: 32,
+            map_size: 1024 * 1024,
+            flags: EnvironmentFlags::NO_SUB_DIR
+                | EnvironmentFlags::NO_TLS
+                | EnvironmentFlags::NO_META_SYNC
+                | EnvironmentFlags::NO_SYNC,
+            path: test_file,
+        };
+        let env = LmdbEnvironmentFactory::default().create(options).unwrap();
+
+        Self { test_dir, env }
+    }
+}
+
+impl Drop for TestFixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(self.test_dir.clone());
     }
 }
 
