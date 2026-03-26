@@ -634,11 +634,7 @@ fn unlock_search() {
 
     assert_timely2(|| node.balance(&DEV_GENESIS_ACCOUNT) != balance);
 
-    assert_timely_eq(
-        Duration::from_secs(10),
-        || node.active.len(),
-        0,
-    );
+    assert_timely_eq(Duration::from_secs(10), || node.active.len(), 0);
 
     node.wallets
         .insert_adhoc2(&wallet_id, &key2.raw_key(), true)
@@ -1444,11 +1440,7 @@ fn online_reps_election() {
     let send1 = lattice.genesis().send(&key, Amount::nano(1000));
 
     node.process_active(send1.clone());
-    assert_timely_eq(
-        Duration::from_secs(5),
-        || node.active.len(),
-        1,
-    );
+    assert_timely_eq(Duration::from_secs(5), || node.active.len(), 1);
 
     // Process vote for ongoing election
     let vote = Arc::new(Vote::new(
@@ -1944,9 +1936,7 @@ fn fork_open_flip() {
     let open1 = node1.process(open1);
     node1.election_schedulers.manual.push(open1.clone());
     assert_timely2(|| node1.is_active_root(&open1.qualified_root()));
-    node1
-        .active
-        .transition_active(&open1.hash());
+    node1.active.transition_active(&open1.hash());
 
     // create node2, with blocks send1 and open2 pre-initialised in the ledger,
     // so that block open1 cannot possibly get in the ledger before open2 via background sync
@@ -1960,9 +1950,7 @@ fn fork_open_flip() {
     assert_timely2(|| node2.block_exists(&open2.hash()));
     node2.election_schedulers.manual.push(open2.clone());
     assert_timely2(|| node2.is_active_root(&open2.qualified_root()));
-    node2
-        .active
-        .transition_active(&open2.hash());
+    node2.active.transition_active(&open2.hash());
 
     assert_timely_eq2(|| node1.active.len(), 2);
     assert_timely_eq2(|| node2.active.len(), 2);

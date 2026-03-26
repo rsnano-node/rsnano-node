@@ -14,9 +14,7 @@ pub struct AecTicker {
 }
 
 impl AecTicker {
-    pub(crate) fn new(
-        aec_service: Arc<AecService>,
-    ) -> Self {
+    pub(crate) fn new(aec_service: Arc<AecService>) -> Self {
         Self {
             aec_service,
             plugins: Vec::new(),

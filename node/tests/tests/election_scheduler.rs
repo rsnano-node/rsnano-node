@@ -5,9 +5,7 @@ mod election_scheduler {
     use rsnano_ledger::test_helpers::UnsavedBlockLatticeBuilder;
     use rsnano_node::{
         config::NodeConfig,
-        consensus::{
-            election::ElectionBehavior, election_schedulers::OptimisticSchedulerConfig,
-        },
+        consensus::{election::ElectionBehavior, election_schedulers::OptimisticSchedulerConfig},
     };
     use rsnano_types::{Amount, BlockPriority, DEV_GENESIS_KEY, PrivateKey};
     use test_helpers::{setup_chains, setup_rep};
@@ -144,7 +142,10 @@ mod election_scheduler {
         let block = blocks.last().unwrap();
         assert_timely2(|| node.is_active_hash(&block.hash()));
         assert_eq!(
-            node.active.election_for_block(&block.hash()).unwrap().behavior(),
+            node.active
+                .election_for_block(&block.hash())
+                .unwrap()
+                .behavior(),
             ElectionBehavior::Optimistic
         );
 
@@ -158,7 +159,10 @@ mod election_scheduler {
 
         // Verify priority transition
         assert_eq!(
-            node.active.election_for_block(&block.hash()).unwrap().behavior(),
+            node.active
+                .election_for_block(&block.hash())
+                .unwrap()
+                .behavior(),
             ElectionBehavior::Priority
         );
         assert!(node.is_active_root(&block.qualified_root()));

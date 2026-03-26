@@ -4,7 +4,7 @@ pub struct NodeFlags {
     pub rpc_config_overrides: Vec<String>,
     pub disable_backup: bool,
     pub disable_ongoing_bootstrap: bool, // For testing only
-    pub disable_ledger_storage: bool, // For testing only
+    pub disable_ledger_storage: bool,    // For testing only
     pub disable_rep_crawler: bool,
     /// Disables the AEC ticker
     pub disable_request_loop: bool, // For testing only

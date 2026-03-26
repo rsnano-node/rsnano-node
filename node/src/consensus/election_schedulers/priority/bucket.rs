@@ -11,10 +11,7 @@ use crate::consensus::{ActiveElectionsContainer, AecInsertError, AecService};
 
 pub(crate) trait PriorityAecAccess {
     fn bucket_len(&self, bucket_id: usize) -> usize;
-    fn lowest_priority(
-        &self,
-        bucket_id: usize,
-    ) -> Option<(QualifiedRoot, TimePriority)>;
+    fn lowest_priority(&self, bucket_id: usize) -> Option<(QualifiedRoot, TimePriority)>;
     fn vacancy(&self) -> i64;
     fn find_bucket(&self, root: &QualifiedRoot) -> Option<usize>;
     fn erase_lowest_prio_election(&self, bucket_id: usize);

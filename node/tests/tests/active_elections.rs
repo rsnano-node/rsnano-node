@@ -269,7 +269,10 @@ fn non_final() {
     let _quorum_delta = node.online_reps.lock().unwrap().quorum_delta();
     assert_timely_eq2(
         || {
-            let election = node.active.election_for_root(&send.qualified_root()).unwrap();
+            let election = node
+                .active
+                .election_for_root(&send.qualified_root())
+                .unwrap();
             //election.update_tallies(&node.ledger.rep_weights.read(), quorum_delta);
             election.tallies().winner().unwrap().1
         },
@@ -905,9 +908,7 @@ fn confirmation_consistency() {
             .unwrap();
 
         assert_timely2(|| node.block_confirmed(&block.hash()));
-        assert_timely2(|| {
-            node.active.was_recently_confirmed(&block.hash())
-        });
+        assert_timely2(|| node.active.was_recently_confirmed(&block.hash()));
     }
 }
 

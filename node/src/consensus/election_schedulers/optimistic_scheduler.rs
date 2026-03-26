@@ -163,7 +163,9 @@ impl OptimisticScheduler {
 
     fn predicate(&self, candidates: &OrderedCandidates) -> bool {
         let vacancy = self.max_elections as i64
-            - self.aec_service.count_by_behavior(ElectionBehavior::Optimistic) as i64;
+            - self
+                .aec_service
+                .count_by_behavior(ElectionBehavior::Optimistic) as i64;
         let vacancy = min(vacancy, self.aec_service.vacancy());
 
         if vacancy <= 0 {

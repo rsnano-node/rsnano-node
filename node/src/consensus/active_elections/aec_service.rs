@@ -7,8 +7,7 @@ use std::{
 use rsnano_ledger::RepWeightCache;
 use rsnano_nullable_clock::{SteadyClock, Timestamp};
 use rsnano_types::{
-    Amount, Block, BlockHash, BlockPriority, PublicKey, QualifiedRoot, Root, SavedBlock,
-    VoteError,
+    Amount, Block, BlockHash, BlockPriority, PublicKey, QualifiedRoot, Root, SavedBlock, VoteError,
 };
 use rsnano_utils::{
     container_info::{ContainerInfo, ContainerInfoProvider},
@@ -151,11 +150,7 @@ impl AecService {
     }
 
     pub fn election_for_root(&self, root: &QualifiedRoot) -> Option<Election> {
-        self.active
-            .read()
-            .unwrap()
-            .election_for_root(root)
-            .cloned()
+        self.active.read().unwrap().election_for_root(root).cloned()
     }
 
     pub fn election_for_block(&self, hash: &BlockHash) -> Option<Election> {

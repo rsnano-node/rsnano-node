@@ -22,3 +22,4 @@ goals.*.md
 .done
 AGENTS.md
 run_tests.sh
+.tmp-lmdb
