@@ -148,6 +148,12 @@ pub struct ActiveElectionsInfo {
     pub optimistic: usize,
 }
 
+#[derive(Default)]
+pub struct ConfirmationActiveInfo {
+    pub unconfirmed_roots: Vec<QualifiedRoot>,
+    pub confirmed: u64,
+}
+
 pub struct AecInsertRequest {
     pub block: SavedBlock,
     pub behavior: ElectionBehavior,

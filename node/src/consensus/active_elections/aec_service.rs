@@ -20,7 +20,7 @@ use crate::{
     consensus::{
         ActiveElectionsConfig, ActiveElectionsContainer, AecCooldownReason, AecEvent,
         AecInsertError, AecInsertRequest, AecSchedulerRequest, AecTickerRead, ApplyVoteArgs,
-        FilteredVote, ReceivedVote,
+        ConfirmationActiveInfo, FilteredVote, ReceivedVote,
         election::{ConfirmedElection, Election, ElectionBehavior, ElectionState, VoteType},
         election_schedulers::priority::PriorityBucketState,
     },
@@ -144,13 +144,23 @@ impl AecService {
             .was_recently_confirmed(block_hash)
     }
 
-    pub fn elections_round_robin(&self) -> Vec<Election> {
-        self.active
-            .read()
-            .unwrap()
-            .iter_round_robin()
-            .cloned()
-            .collect()
+    pub fn confirmation_active(&self, announcements: u64) -> ConfirmationActiveInfo {
+        if announcements > 0 {
+            return ConfirmationActiveInfo::default();
+        }
+
+        let mut result = ConfirmationActiveInfo::default();
+        let active = self.active.read().unwrap();
+        for election in active.iter_round_robin() {
+            if election.is_confirmed() {
+                result.confirmed += 1;
+            } else {
+                result
+                    .unconfirmed_roots
+                    .push(election.qualified_root().clone());
+            }
+        }
+        result
     }
 
     pub fn count_by_behavior(&self, behavior: ElectionBehavior) -> usize {
@@ -574,6 +584,43 @@ mod tests {
 
         assert!(!service.is_active_root(&old_root));
         assert!(service.is_active_root(&new_root));
+    }
+
+    #[test]
+    fn confirmation_active_returns_unconfirmed_roots_without_cloning_elections() {
+        let service = AecService::new_null();
+        let block = SavedBlock::new_test_instance();
+        let root = block.qualified_root();
+
+        service
+            .insert_for_test(
+                AecInsertRequest::new_priority(block, BlockPriority::new_test_instance()),
+                service.clock.now(),
+            )
+            .unwrap();
+
+        let result = service.confirmation_active(0);
+
+        assert_eq!(result.unconfirmed_roots, vec![root]);
+        assert_eq!(result.confirmed, 0);
+    }
+
+    #[test]
+    fn confirmation_active_honors_announcement_threshold() {
+        let service = AecService::new_null();
+        let block = SavedBlock::new_test_instance();
+
+        service
+            .insert_for_test(
+                AecInsertRequest::new_priority(block, BlockPriority::new_test_instance()),
+                service.clock.now(),
+            )
+            .unwrap();
+
+        let result = service.confirmation_active(1);
+
+        assert!(result.unconfirmed_roots.is_empty());
+        assert_eq!(result.confirmed, 0);
     }
 
     #[derive(Clone, Default)]
