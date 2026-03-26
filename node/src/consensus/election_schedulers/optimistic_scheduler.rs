@@ -3,7 +3,7 @@ use std::{
     collections::{HashMap, VecDeque},
     mem::size_of,
     sync::{
-        Arc, Condvar, Mutex, RwLock,
+        Arc, Condvar, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     thread::JoinHandle,
@@ -11,7 +11,6 @@ use std::{
 };
 
 use rsnano_ledger::{AnySet, Ledger, LedgerSet};
-use rsnano_nullable_clock::SteadyClock;
 use rsnano_types::{Account, AccountInfo, ConfirmationHeightInfo};
 use rsnano_utils::{
     container_info::ContainerInfo,
@@ -21,7 +20,7 @@ use rsnano_utils::{
 use crate::{
     cementation::ConfirmingSet,
     config::NetworkConstants,
-    consensus::{ActiveElectionsContainer, AecInsertRequest, election::ElectionBehavior},
+    consensus::{AecService, election::ElectionBehavior},
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -59,26 +58,23 @@ pub struct OptimisticScheduler {
     condition: Condvar,
     candidates: Mutex<OrderedCandidates>,
     stats: Arc<Stats>,
-    active_elections: Arc<RwLock<ActiveElectionsContainer>>,
+    aec_service: Arc<AecService>,
     network_constants: NetworkConstants,
     ledger: Arc<Ledger>,
     confirming_set: Arc<ConfirmingSet>,
-    clock: Arc<SteadyClock>,
     pub max_elections: usize,
 }
 
 impl OptimisticScheduler {
-    pub fn new(
+    pub(crate) fn new(
         config: OptimisticSchedulerConfig,
         stats: Arc<Stats>,
-        active_elections: Arc<RwLock<ActiveElectionsContainer>>,
+        aec_service: Arc<AecService>,
         network_constants: NetworkConstants,
         ledger: Arc<Ledger>,
         confirming_set: Arc<ConfirmingSet>,
-        clock: Arc<SteadyClock>,
     ) -> Self {
-        let max_elections =
-            active_elections.read().unwrap().max_len() * config.optimistic_limit_percentage / 100;
+        let max_elections = aec_service.max_len() * config.optimistic_limit_percentage / 100;
 
         Self {
             thread: Mutex::new(None),
@@ -87,11 +83,10 @@ impl OptimisticScheduler {
             condition: Condvar::new(),
             candidates: Mutex::new(OrderedCandidates::default()),
             stats,
-            active_elections,
+            aec_service,
             network_constants,
             ledger,
             confirming_set,
-            clock,
             max_elections,
         }
     }
@@ -167,10 +162,9 @@ impl OptimisticScheduler {
     }
 
     fn predicate(&self, candidates: &OrderedCandidates) -> bool {
-        let active = self.active_elections.read().unwrap();
         let vacancy = self.max_elections as i64
-            - active.count_by_behavior(ElectionBehavior::Optimistic) as i64;
-        let vacancy = min(vacancy, active.vacancy());
+            - self.aec_service.count_by_behavior(ElectionBehavior::Optimistic) as i64;
+        let vacancy = min(vacancy, self.aec_service.vacancy());
 
         if vacancy <= 0 {
             return false;
@@ -234,14 +228,8 @@ impl OptimisticScheduler {
             if !is_confirmed && !forked {
                 // Try to insert it into AEC
                 // We check for AEC vacancy inside our predicate
-                let now = self.clock.now();
                 let priority = any.block_priority(&block);
-                let inserted = self
-                    .active_elections
-                    .write()
-                    .unwrap()
-                    .insert(AecInsertRequest::new_optimistic(block, priority), now)
-                    .is_ok();
+                let inserted = self.aec_service.insert_optimistic(block, priority);
 
                 if inserted {
                     self.stats
