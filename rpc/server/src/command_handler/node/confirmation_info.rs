@@ -13,8 +13,9 @@ impl RpcCommandHandler {
     ) -> anyhow::Result<ConfirmationInfoResponse> {
         let include_representatives = args.representatives.unwrap_or(false.into()).inner();
         let contents = args.contents.unwrap_or(true.into()).inner();
-        let active = self.node.active.read().unwrap();
-        let election = active
+        let election = self
+            .node
+            .active
             .election_for_root(&args.root)
             .ok_or_else(|| anyhow!("Active confirmation not found"))?;
 

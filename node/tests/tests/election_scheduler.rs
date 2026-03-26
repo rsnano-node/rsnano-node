@@ -6,8 +6,7 @@ mod election_scheduler {
     use rsnano_node::{
         config::NodeConfig,
         consensus::{
-            AecInsertRequest, election::ElectionBehavior,
-            election_schedulers::OptimisticSchedulerConfig,
+            election::ElectionBehavior, election_schedulers::OptimisticSchedulerConfig,
         },
     };
     use rsnano_types::{Amount, BlockPriority, DEV_GENESIS_KEY, PrivateKey};
@@ -145,12 +144,7 @@ mod election_scheduler {
         let block = blocks.last().unwrap();
         assert_timely2(|| node.is_active_hash(&block.hash()));
         assert_eq!(
-            node.active
-                .read()
-                .unwrap()
-                .election_for_block(&block.hash())
-                .unwrap()
-                .behavior(),
+            node.active.election_for_block(&block.hash()).unwrap().behavior(),
             ElectionBehavior::Optimistic
         );
 
@@ -158,19 +152,13 @@ mod election_scheduler {
         node.confirm(blocks[howmany_blocks - 1].hash());
 
         // Attempt to start priority election for second block
-        let _ = node.active.write().unwrap().insert(
-            AecInsertRequest::new_priority(block.clone(), BlockPriority::MIN),
-            node.steady_clock.now(),
-        );
+        let _ = node
+            .active
+            .insert_priority(block.clone(), BlockPriority::MIN);
 
         // Verify priority transition
         assert_eq!(
-            node.active
-                .read()
-                .unwrap()
-                .election_for_block(&block.hash())
-                .unwrap()
-                .behavior(),
+            node.active.election_for_block(&block.hash()).unwrap().behavior(),
             ElectionBehavior::Priority
         );
         assert!(node.is_active_root(&block.qualified_root()));

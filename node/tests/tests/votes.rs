@@ -91,8 +91,7 @@ fn add_cooldown() {
         .vote_processor
         .vote_blocking(&ReceivedVote::new(vote2, VoteSource::Live, Some(channel)).into());
 
-    let active = node.active.read().unwrap();
-    let election1 = active.election_for_root(&send1.qualified_root()).unwrap();
+    let election1 = node.active.election_for_root(&send1.qualified_root()).unwrap();
     assert_eq!(1, election1.vote_count());
     let votes = election1.votes();
     assert!(votes.contains_key(&DEV_GENESIS_PUB_KEY));

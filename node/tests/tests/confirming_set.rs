@@ -19,8 +19,8 @@ fn confirmed_history() {
     let send2 = lattice.genesis().send(&key1, Amount::nano(1000));
 
     node.process_multi(&[send1.clone(), send2.clone()]);
-    assert_timely2(|| node.active.read().unwrap().is_active_hash(&send1.hash()));
-    node.active.write().unwrap().cancel(&send1.qualified_root());
+    assert_timely2(|| node.active.is_active_hash(&send1.hash()));
+    node.active.cancel(&send1.qualified_root());
     start_election(&node, &send2.hash());
     {
         // Prevent the confirming set doing any writes
@@ -50,7 +50,7 @@ fn confirmed_history() {
 
     assert_timely2(|| node.ledger.confirmed().block_exists(&send1.hash()));
 
-    assert_timely_eq2(|| node.active.read().unwrap().len(), 0);
+    assert_timely_eq2(|| node.active.len(), 0);
     assert_timely_eq2(
         || node.stats().get("confirmation_observer", "active_quorum"),
         1,
@@ -58,7 +58,7 @@ fn confirmed_history() {
 
     // Each block that's confirmed is in the recently_cemented history
     assert_timely_eq2(|| node.recently_cemented.lock().unwrap().len(), 2);
-    assert_eq!(node.active.read().unwrap().len(), 0);
+    assert_eq!(node.active.len(), 0);
 
     // Confirm the callback is not called under this circumstance
     assert_timely_eq2(
@@ -92,9 +92,9 @@ fn dependent_election() {
     let send3 = lattice.genesis().send(&key1, Amount::nano(1000));
     node.process_multi(&[send1.clone(), send2.clone(), send3.clone()]);
 
-    assert_timely2(|| node.active.read().unwrap().is_active_hash(&send1.hash()));
-    node.active.write().unwrap().cancel(&send1.qualified_root());
-    assert_timely2(|| !node.active.read().unwrap().is_active_hash(&send1.hash()));
+    assert_timely2(|| node.active.is_active_hash(&send1.hash()));
+    node.active.cancel(&send1.qualified_root());
+    assert_timely2(|| !node.active.is_active_hash(&send1.hash()));
 
     // This election should be confirmed as active_conf_height
     start_election(&node, &send2.hash());
