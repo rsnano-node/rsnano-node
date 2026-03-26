@@ -7,21 +7,26 @@ use std::{
 use rsnano_ledger::RepWeightCache;
 use rsnano_nullable_clock::{SteadyClock, Timestamp};
 use rsnano_types::{
-    Amount, Block, BlockHash, BlockPriority, PublicKey, QualifiedRoot, SavedBlock, VoteError,
+    Amount, Block, BlockHash, BlockPriority, PublicKey, QualifiedRoot, Root, SavedBlock,
+    VoteError,
 };
-use rsnano_utils::sync::backpressure_channel::{self, Receiver, Sender};
+use rsnano_utils::{
+    container_info::{ContainerInfo, ContainerInfoProvider},
+    stats::{StatsCollection, StatsSource},
+    sync::backpressure_channel::{self, Receiver, Sender},
+};
 
 use crate::{
     consensus::{
         ActiveElectionsConfig, ActiveElectionsContainer, AecCooldownReason, AecEvent,
         AecInsertError, AecInsertRequest, ApplyVoteArgs, FilteredVote, ReceivedVote,
-        election::{ConfirmedElection, Election, ElectionBehavior},
+        election::{ConfirmedElection, Election, ElectionBehavior, VoteType},
     },
     representatives::OnlineReps,
     utils::{BackpressureEventProcessor, spawn_backpressure_processor},
 };
 
-pub(crate) struct AecService {
+pub struct AecService {
     active: Arc<RwLock<ActiveElectionsContainer>>,
     events_tx: Sender<AecEvent>,
     events_rx: Mutex<Option<Receiver<AecEvent>>>,
@@ -34,7 +39,7 @@ pub(crate) struct AecService {
 impl AecService {
     const EVENT_QUEUE_SOFT_LIMIT: usize = 1024 * 5;
 
-    pub(crate) fn new(
+    pub fn new(
         config: ActiveElectionsConfig,
         base_latency: Duration,
         online_reps: Arc<Mutex<OnlineReps>>,
@@ -58,7 +63,7 @@ impl AecService {
         }
     }
 
-    pub(crate) fn new_null() -> Self {
+    pub fn new_null() -> Self {
         let rep_weights = Arc::new(RepWeightCache::default());
         let online_reps = Arc::new(Mutex::new(
             OnlineReps::builder()
@@ -97,27 +102,30 @@ impl AecService {
         self.active.write().unwrap().set_cooldown(cool_down, reason);
     }
 
-    pub(crate) fn erase(&self, root: &QualifiedRoot) -> bool {
+    pub fn erase(&self, root: &QualifiedRoot) -> bool {
         self.active.write().unwrap().erase(root)
     }
 
-    pub(crate) fn max_len(&self) -> usize {
+    pub fn max_len(&self) -> usize {
         self.active.read().unwrap().max_len()
     }
 
-    pub(crate) fn vacancy(&self) -> i64 {
+    pub fn vacancy(&self) -> i64 {
         self.active.read().unwrap().vacancy()
     }
 
-    pub(crate) fn info(&self) -> crate::consensus::ActiveElectionsInfo {
+    pub fn info(&self) -> crate::consensus::ActiveElectionsInfo {
         self.active.read().unwrap().info()
     }
 
-    pub(crate) fn was_recently_confirmed(&self, block_hash: &BlockHash) -> bool {
-        self.active.read().unwrap().was_recently_confirmed(block_hash)
+    pub fn was_recently_confirmed(&self, block_hash: &BlockHash) -> bool {
+        self.active
+            .read()
+            .unwrap()
+            .was_recently_confirmed(block_hash)
     }
 
-    pub(crate) fn elections_round_robin(&self) -> Vec<Election> {
+    pub fn elections_round_robin(&self) -> Vec<Election> {
         self.active
             .read()
             .unwrap()
@@ -126,17 +134,44 @@ impl AecService {
             .collect()
     }
 
-    pub(crate) fn now(&self) -> Timestamp {
+    pub fn now(&self) -> Timestamp {
         self.clock.now()
     }
 
-    pub(crate) fn count_by_behavior(&self, behavior: ElectionBehavior) -> usize {
+    pub fn count_by_behavior(&self, behavior: ElectionBehavior) -> usize {
         self.active.read().unwrap().count_by_behavior(behavior)
     }
 
-    #[cfg(test)]
-    pub(crate) fn is_active_hash(&self, hash: &BlockHash) -> bool {
+    pub fn is_active_root(&self, root: &QualifiedRoot) -> bool {
+        self.active.read().unwrap().is_active_root(root)
+    }
+
+    pub fn is_active_hash(&self, hash: &BlockHash) -> bool {
         self.active.read().unwrap().is_active_hash(hash)
+    }
+
+    pub fn election_for_root(&self, root: &QualifiedRoot) -> Option<Election> {
+        self.active
+            .read()
+            .unwrap()
+            .election_for_root(root)
+            .cloned()
+    }
+
+    pub fn election_for_block(&self, hash: &BlockHash) -> Option<Election> {
+        self.active
+            .read()
+            .unwrap()
+            .election_for_block(hash)
+            .cloned()
+    }
+
+    pub fn len(&self) -> usize {
+        self.active.read().unwrap().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.active.read().unwrap().is_empty()
     }
 
     pub(crate) fn remove_recently_confirmed(&self, block_hash: &BlockHash) {
@@ -167,7 +202,7 @@ impl AecService {
             .transition_time(self.clock.now());
     }
 
-    pub(crate) fn transition_active(&self, block_hash: &BlockHash) -> bool {
+    pub fn transition_active(&self, block_hash: &BlockHash) -> bool {
         self.active.write().unwrap().transition_active(block_hash)
     }
 
@@ -222,7 +257,7 @@ impl AecService {
             .is_ok()
     }
 
-    pub(crate) fn insert_priority(
+    pub fn insert_priority(
         &self,
         block: SavedBlock,
         priority: BlockPriority,
@@ -253,6 +288,58 @@ impl AecService {
             .write()
             .unwrap()
             .erase_lowest_prio_election(bucket);
+    }
+
+    pub(crate) fn next_vote_to_broadcast(
+        &self,
+        bucket: usize,
+        vote_broadcast_interval: Duration,
+        now: Timestamp,
+    ) -> Option<(Root, BlockHash, VoteType)> {
+        let mut active = self.active.write().unwrap();
+        let vote_target = active.iter_bucket(bucket).find_map(|election| {
+            if election.can_vote(vote_broadcast_interval, now) {
+                Some((
+                    election.qualified_root().clone(),
+                    election.vote_type(),
+                    election.winner().hash(),
+                ))
+            } else {
+                None
+            }
+        });
+
+        vote_target.map(|(qualified_root, vote_type, winner_hash)| {
+            active.set_last_voted(&qualified_root, vote_type, now);
+            (qualified_root.root, winner_hash, vote_type)
+        })
+    }
+
+    pub fn clear_recently_confirmed(&self) {
+        self.active.write().unwrap().clear_recently_confirmed();
+    }
+
+    pub fn force_confirm(&self, block_hash: &BlockHash) {
+        self.active
+            .write()
+            .unwrap()
+            .force_confirm(block_hash, self.clock.now());
+    }
+
+    pub fn cancel(&self, root: &QualifiedRoot) {
+        self.active.write().unwrap().cancel(root);
+    }
+
+    pub fn cancel_all(&self) {
+        self.active.write().unwrap().cancel_all();
+    }
+
+    pub fn simulate_event(&self, event: AecEvent) {
+        self.active.read().unwrap().simulate_event(event);
+    }
+
+    pub fn stop(&self) {
+        self.active.write().unwrap().stop();
     }
 
     pub(crate) fn apply_vote(
@@ -313,8 +400,21 @@ impl AecService {
     }
 
     /// Temporary compatibility bridge for collaborators that have not yet migrated to AecService.
+    #[cfg(test)]
     pub(crate) fn legacy_container(&self) -> Arc<RwLock<ActiveElectionsContainer>> {
         Arc::clone(&self.active)
+    }
+}
+
+impl StatsSource for AecService {
+    fn collect_stats(&self, result: &mut StatsCollection) {
+        self.active.read().unwrap().collect_stats(result);
+    }
+}
+
+impl ContainerInfoProvider for AecService {
+    fn container_info(&self) -> ContainerInfo {
+        self.active.read().unwrap().container_info()
     }
 }
 

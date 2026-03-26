@@ -74,11 +74,7 @@ impl RpcCommandHandler {
                 Err(BlockError::NegativeSpend) => Err(anyhow!("Negative spend")),
                 Err(BlockError::Fork) => {
                     if args.force.unwrap_or_default().inner() {
-                        self.node
-                            .active
-                            .write()
-                            .unwrap()
-                            .erase(&block.qualified_root());
+                        self.node.active.erase(&block.qualified_root());
                         self.node.block_processor_queue.push(BlockContext::new(
                             block,
                             BlockSource::Forced,

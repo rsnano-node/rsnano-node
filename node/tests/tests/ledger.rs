@@ -60,8 +60,6 @@ mod votes {
         assert_eq!(
             node1
                 .active
-                .read()
-                .unwrap()
                 .election_for_block(&send1.hash())
                 .unwrap()
                 .vote_count(),
@@ -70,8 +68,6 @@ mod votes {
         assert_eq!(
             node1
                 .active
-                .read()
-                .unwrap()
                 .election_for_block(&send1.hash())
                 .unwrap()
                 .votes()
@@ -158,8 +154,6 @@ fn block_hash_account_conflict() {
     let winner_for = |root: &QualifiedRoot| {
         node1
             .active
-            .read()
-            .unwrap()
             .election_for_root(root)
             .unwrap()
             .winner()

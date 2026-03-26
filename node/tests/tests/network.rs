@@ -150,8 +150,6 @@ fn receivable_processor_confirm_insufficient_pos() {
         0,
         node1
             .active
-            .read()
-            .unwrap()
             .election_for_block(&send1.hash())
             .unwrap()
             .vote_count()
@@ -163,8 +161,6 @@ fn receivable_processor_confirm_insufficient_pos() {
         || {
             node1
                 .active
-                .read()
-                .unwrap()
                 .election_for_block(&send1.hash())
                 .unwrap()
                 .vote_count()
@@ -191,8 +187,6 @@ fn receivable_processor_confirm_sufficient_pos() {
         0,
         node1
             .active
-            .read()
-            .unwrap()
             .election_for_block(&send1.hash())
             .unwrap()
             .vote_count()

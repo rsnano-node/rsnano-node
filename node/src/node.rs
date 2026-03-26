@@ -65,7 +65,7 @@ use crate::{
     cementation::{ConfirmingSet, TrackConfirmationTimes},
     config::{GlobalConfig, NetworkParams, NodeConfig, NodeFlags},
     consensus::{
-        ActiveElectionsContainer, AecForkInserter, AecService, AecTicker, AecVoter,
+        AecForkInserter, AecService, AecTicker, AecVoter,
         BootstrapElectionActivator, BootstrapStaleElections, ConfirmReqSender,
         ConfirmationSolicitorPlugin, CpsLimiter, CurrentRepTiers, DependentElectionsConfirmer,
         ForkCache, ForkCacheUpdater, LocalVoteHistory, LocalVotesRemover, RepTiersCalculator,
@@ -132,7 +132,7 @@ pub struct Node {
     pub block_processor_queue: Arc<BlockProcessorQueue>,
     pub wallets: Arc<Wallets>,
     pub vote_generators: Arc<VoteGenerators>,
-    pub active: Arc<RwLock<ActiveElectionsContainer>>,
+    pub active: Arc<AecService>,
     pub vote_processor: Arc<VoteProcessor>,
     vote_cache_processor: Arc<VoteCacheProcessor>,
     pub rep_crawler: Arc<RepCrawler>,
@@ -629,8 +629,6 @@ impl Node {
         let aec_service_for_info = aec_service.clone();
         event_queues_info.add_leaf("aec", move || aec_service_for_info.event_queue_len());
 
-        let active_elections = aec_service.legacy_container();
-
         let block_rate_calculator = BlockRateCalculator::new(steady_clock.clone(), ledger.clone());
         let block_rates = block_rate_calculator.rates().clone();
         ticker_pool.insert(block_rate_calculator, Duration::from_millis(500));
@@ -865,7 +863,7 @@ impl Node {
         ));
 
         let vote_cache_w = Arc::downgrade(&vote_cache);
-        let active_w = Arc::downgrade(&active_elections);
+        let active_w = Arc::downgrade(&aec_service);
         let scheduler_w = Arc::downgrade(&election_schedulers);
         let confirming_set_w = Arc::downgrade(&confirming_set);
         let local_block_broadcaster_w = Arc::downgrade(&local_block_broadcaster);
@@ -878,8 +876,7 @@ impl Node {
             }
 
             if let Some(i) = active_w.upgrade() {
-                let guard = i.read().unwrap();
-                if guard.is_active_hash(hash) || guard.was_recently_confirmed(hash) {
+                if i.is_active_hash(hash) || i.was_recently_confirmed(hash) {
                     return false;
                 }
             }
@@ -1205,9 +1202,8 @@ impl Node {
         });
 
         let aec_voter = AecVoter::new(
-            active_elections.clone(),
+            aec_service.clone(),
             vote_generators.clone(),
-            steady_clock.clone(),
             current_network,
             cps_limiter,
         );
@@ -1281,7 +1277,7 @@ impl Node {
         stats_collector.add_source(stats.clone());
         stats_collector.add_source(online_reps.clone());
         stats_collector.add_source(fork_cache.clone());
-        stats_collector.add_source(active_elections.clone());
+        stats_collector.add_source(aec_service.clone());
         stats_collector.add_source(vote_rebroadcaster.stats.clone());
         stats_collector.add_source(election_schedulers.clone());
         stats_collector.add_source(network.clone());
@@ -1299,7 +1295,7 @@ impl Node {
 
         container_info.add("work", work_factory.clone());
         container_info.add("ledger", ledger.clone());
-        container_info.add("active", active_elections.clone());
+        container_info.add("active", aec_service.clone());
         container_info.add("network", network.clone());
         container_info.add("syn_cookies", syn_cookies);
         container_info.add("telemetry", telemetry.clone());
@@ -1353,7 +1349,7 @@ impl Node {
             block_processor_queue,
             wallets,
             vote_generators,
-            active: active_elections,
+            active: aec_service,
             vote_processor,
             vote_cache_processor,
             rep_crawler,
@@ -1522,11 +1518,11 @@ impl Node {
     }
 
     pub fn is_active_root(&self, root: &QualifiedRoot) -> bool {
-        self.active.read().unwrap().is_active_root(root)
+        self.active.is_active_root(root)
     }
 
     pub fn is_active_hash(&self, hash: &BlockHash) -> bool {
-        self.active.read().unwrap().is_active_hash(hash)
+        self.active.is_active_hash(hash)
     }
 
     pub fn force_confirm(&self, hash: &BlockHash) {
@@ -1534,10 +1530,7 @@ impl Node {
             self.network_params.network.current_network,
             NetworkType::NanoDevNetwork
         );
-        self.active
-            .write()
-            .unwrap()
-            .force_confirm(hash, self.steady_clock.now());
+        self.active.force_confirm(hash);
     }
 
     pub fn get_stat(&self, stat: &'static str, detail: &'static str, dir: Direction) -> u64 {
@@ -1655,7 +1648,7 @@ impl Node {
         self.vote_processor.stop();
         self.election_schedulers.stop();
         self.aec_ticker.stop();
-        self.active.write().unwrap().stop();
+        self.active.stop();
         self.vote_generators.stop();
         self.confirming_set.stop();
         self.telemetry.stop();
@@ -1795,10 +1788,7 @@ mod tests {
         let election = ConfirmedElection::new_test_instance();
         let winner_hash = election.winner.hash();
 
-        node.active
-            .write()
-            .unwrap()
-            .simulate_event(AecEvent::ElectionConfirmed(election));
+        node.active.simulate_event(AecEvent::ElectionConfirmed(election));
 
         let output = broadcast_tracker.wait_output().unwrap();
         assert_eq!(output, vec![winner_hash]);

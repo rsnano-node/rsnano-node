@@ -1,22 +1,15 @@
-use std::{
-    sync::{Arc, RwLock},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
-use rsnano_nullable_clock::SteadyClock;
 use rsnano_types::{BlockHash, NetworkType, Root};
 use rsnano_utils::{CancellationToken, ticker::Tickable};
 
 use super::{CpsLimiter, VoteGenerators};
-use crate::consensus::{
-    ActiveElectionsContainer, election::VoteType, election_schedulers::priority::bucket_count,
-};
+use crate::consensus::{AecService, election::VoteType, election_schedulers::priority::bucket_count};
 
 /// Creates votes for blocks within the AEC
 pub(crate) struct AecVoter {
-    aec: Arc<RwLock<ActiveElectionsContainer>>,
+    aec_service: Arc<AecService>,
     vote_generators: Arc<VoteGenerators>,
-    clock: Arc<SteadyClock>,
     cps_limiter: CpsLimiter,
     current_bucket: usize,
     vote_broadcast_interval: Duration,
@@ -24,16 +17,14 @@ pub(crate) struct AecVoter {
 
 impl AecVoter {
     pub(crate) fn new(
-        aec: Arc<RwLock<ActiveElectionsContainer>>,
+        aec_service: Arc<AecService>,
         vote_generators: Arc<VoteGenerators>,
-        clock: Arc<SteadyClock>,
         network: NetworkType,
         cps_limiter: CpsLimiter,
     ) -> Self {
         Self {
-            aec,
+            aec_service,
             vote_generators,
-            clock,
             cps_limiter,
             current_bucket: bucket_count() - 1,
             vote_broadcast_interval: match network {
@@ -53,35 +44,23 @@ impl AecVoter {
 
 impl Tickable for AecVoter {
     fn tick(&mut self, cancel_token: &CancellationToken) {
-        let now = self.clock.now();
-        let mut aec = self.aec.write().unwrap();
+        let now = self.aec_service.now();
         let mut voted = true;
         let mut vote_queue = Vec::new();
         while voted {
             voted = false;
             loop {
-                let vote_target = aec.iter_bucket(self.current_bucket).find_map(|election| {
-                    if election.can_vote(self.vote_broadcast_interval, now) {
-                        Some((
-                            election.qualified_root().clone(),
-                            election.vote_type(),
-                            election.winner().hash(),
-                        ))
-                    } else {
-                        None
-                    }
-                });
-
-                if let Some((root, vote_type, winner_hash)) = vote_target {
+                if let Some((root, winner_hash, vote_type)) = self.aec_service.next_vote_to_broadcast(
+                    self.current_bucket,
+                    self.vote_broadcast_interval,
+                    now,
+                ) {
                     if vote_type == VoteType::NonFinal && !self.cps_limiter.try_vote(now) {
-                        drop(aec);
                         self.flush(&mut vote_queue);
                         return;
                     }
 
-                    vote_queue.push((root.root, winner_hash, vote_type));
-
-                    aec.set_last_voted(&root, vote_type, now);
+                    vote_queue.push((root, winner_hash, vote_type));
                     voted = true;
                 }
 
@@ -97,7 +76,6 @@ impl Tickable for AecVoter {
                 }
             }
         }
-        drop(aec);
         self.flush(&mut vote_queue);
     }
 }

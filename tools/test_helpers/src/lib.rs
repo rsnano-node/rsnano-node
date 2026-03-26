@@ -391,10 +391,7 @@ pub fn start_election(node: &Node, hash: &BlockHash) {
     node.election_schedulers.add_manual(block.clone());
     // wait for the election to appear
     assert_timely2(|| node.is_active_root(&block.qualified_root()));
-    node.active
-        .write()
-        .unwrap()
-        .transition_active(&block.hash());
+    node.active.transition_active(&block.hash());
 }
 
 pub fn start_elections(node: &Node, hashes: &[BlockHash], forced: bool) {
@@ -454,9 +451,9 @@ pub fn setup_chain(
     }
 
     assert_timely2(|| {
-        let empty = node.active.read().unwrap().is_empty();
+        let empty = node.active.is_empty();
         if !empty {
-            node.active.write().unwrap().cancel_all();
+            node.active.cancel_all();
         }
         empty
     });
@@ -514,9 +511,9 @@ pub fn setup_chains(
         chains.push((key.account(), blocks));
 
         assert_timely2(|| {
-            let empty = node.active.read().unwrap().is_empty();
+            let empty = node.active.is_empty();
             if !empty {
-                node.active.write().unwrap().cancel_all();
+                node.active.cancel_all();
             }
             empty
         });
