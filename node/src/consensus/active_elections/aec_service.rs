@@ -20,8 +20,8 @@ use super::AecFacts;
 use crate::{
     consensus::{
         ActiveElectionsConfig, ActiveElectionsContainer, AecCooldownReason, AecEvent,
-        AecInsertError, AecInsertRequest, ApplyVoteArgs, FilteredVote, ReceivedVote,
-        election::{ConfirmedElection, Election, ElectionBehavior, VoteType},
+        AecInsertError, AecInsertRequest, AecTickerRead, ApplyVoteArgs, FilteredVote, ReceivedVote,
+        election::{ConfirmedElection, Election, ElectionBehavior, ElectionState, VoteType},
         election_schedulers::priority::PriorityBucketState,
     },
     representatives::OnlineReps,
@@ -408,6 +408,31 @@ impl StatsSource for AecService {
 impl ContainerInfoProvider for AecService {
     fn container_info(&self) -> ContainerInfo {
         self.active.read().unwrap().container_info()
+    }
+}
+
+impl AecTickerRead for AecService {
+    fn for_each_confirmation_solicitation_election(&self, action: &mut dyn FnMut(&Election)) {
+        let active = self.active.read().unwrap();
+        for election in active.iter_round_robin() {
+            if election.state() == ElectionState::Active {
+                action(election);
+            }
+        }
+    }
+
+    fn for_each_stale_election(
+        &self,
+        now: Timestamp,
+        stale_threshold: Duration,
+        action: &mut dyn FnMut(&Election),
+    ) {
+        let active = self.active.read().unwrap();
+        for election in active.iter_round_robin() {
+            if election.start().elapsed(now) >= stale_threshold {
+                action(election);
+            }
+        }
     }
 }
 

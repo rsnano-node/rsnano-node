@@ -1,16 +1,28 @@
 use std::{
     any::{Any, TypeId},
     sync::Arc,
+    time::Duration,
 };
 
+use rsnano_nullable_clock::Timestamp;
 use rsnano_utils::{CancellationToken, ticker::Tickable};
 
-use super::AecService;
+use super::{AecService, election::Election};
 
 /// Every 300ms tries to transitions election state and send votes + blocks
 pub struct AecTicker {
     aec_service: Arc<AecService>,
     plugins: Vec<Box<dyn AecTickerPlugin>>,
+}
+
+pub(crate) trait AecTickerRead {
+    fn for_each_confirmation_solicitation_election(&self, action: &mut dyn FnMut(&Election));
+    fn for_each_stale_election(
+        &self,
+        now: Timestamp,
+        stale_threshold: Duration,
+        action: &mut dyn FnMut(&Election),
+    );
 }
 
 impl AecTicker {
@@ -49,15 +61,16 @@ impl AecTicker {
 impl Tickable for AecTicker {
     fn tick(&mut self, _cancel_token: &CancellationToken) {
         self.aec_service.transition_time();
+        let aec_read: &dyn AecTickerRead = &*self.aec_service;
 
         for plugin in &mut self.plugins {
-            plugin.run(&self.aec_service);
+            plugin.run(aec_read);
         }
     }
 }
 
 pub(crate) trait AecTickerPlugin: Send + 'static {
-    fn run(&mut self, aec: &AecService);
+    fn run(&mut self, aec: &dyn AecTickerRead);
     #[allow(dead_code)]
     fn type_id(&self) -> TypeId {
         TypeId::of::<Self>()
@@ -95,7 +108,7 @@ mod tests {
     struct StubPlugin(Arc<AtomicBool>);
 
     impl AecTickerPlugin for StubPlugin {
-        fn run(&mut self, _aec: &AecService) {
+        fn run(&mut self, _aec: &dyn AecTickerRead) {
             self.0.store(true, Ordering::Relaxed);
         }
 
