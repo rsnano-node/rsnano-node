@@ -15,7 +15,7 @@ use crate::{
     consensus::{
         ActiveElectionsConfig, ActiveElectionsContainer, AecCooldownReason, AecEvent,
         AecInsertError, AecInsertRequest, ApplyVoteArgs, FilteredVote, ReceivedVote,
-        election::{ConfirmedElection, ElectionBehavior},
+        election::{ConfirmedElection, Election, ElectionBehavior},
     },
     representatives::OnlineReps,
     utils::{BackpressureEventProcessor, spawn_backpressure_processor},
@@ -109,6 +109,23 @@ impl AecService {
         self.active.read().unwrap().vacancy()
     }
 
+    pub(crate) fn info(&self) -> crate::consensus::ActiveElectionsInfo {
+        self.active.read().unwrap().info()
+    }
+
+    pub(crate) fn was_recently_confirmed(&self, block_hash: &BlockHash) -> bool {
+        self.active.read().unwrap().was_recently_confirmed(block_hash)
+    }
+
+    pub(crate) fn elections_round_robin(&self) -> Vec<Election> {
+        self.active
+            .read()
+            .unwrap()
+            .iter_round_robin()
+            .cloned()
+            .collect()
+    }
+
     pub(crate) fn now(&self) -> Timestamp {
         self.clock.now()
     }
@@ -144,7 +161,10 @@ impl AecService {
     }
 
     pub(crate) fn transition_time(&self) {
-        self.active.write().unwrap().transition_time(self.clock.now());
+        self.active
+            .write()
+            .unwrap()
+            .transition_time(self.clock.now());
     }
 
     pub(crate) fn transition_active(&self, block_hash: &BlockHash) -> bool {

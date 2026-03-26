@@ -1,11 +1,11 @@
 use std::{
     any::Any,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, Mutex},
 };
 
 use super::{
-    ActiveElectionsContainer, AecTickerPlugin, ConfirmationSolicitor,
-    confirm_req_sender::ConfirmReqSender, election::ElectionState,
+    AecService, AecTickerPlugin, ConfirmationSolicitor, confirm_req_sender::ConfirmReqSender,
+    election::ElectionState,
     winner_block_broadcaster::WinnerBlockBroadcaster,
 };
 use crate::{representatives::OnlineReps, transport::MessageFlooder};
@@ -30,7 +30,7 @@ impl ConfirmationSolicitorPlugin {
 }
 
 impl AecTickerPlugin for ConfirmationSolicitorPlugin {
-    fn run(&mut self, aec: &RwLock<ActiveElectionsContainer>) {
+    fn run(&mut self, aec: &AecService) {
         let peered_prs = self.online_reps.lock().unwrap().peered_principal_reps();
 
         // TODO don't clone flooder!'
@@ -47,11 +47,9 @@ impl AecTickerPlugin for ConfirmationSolicitorPlugin {
          * Flushed elections are later re-activated via frontier confirmation
          */
         let elections: Vec<_> = aec
-            .read()
-            .unwrap()
-            .iter_round_robin()
+            .elections_round_robin()
+            .into_iter()
             .filter(|e| e.state() == ElectionState::Active)
-            .cloned()
             .collect();
 
         for election in &elections {

@@ -753,7 +753,7 @@ impl Node {
             steady_clock.clone(),
             message_sender.clone(),
             keepalive_publisher.clone(),
-            active_elections.clone(),
+            aec_service.clone(),
             runtime.clone(),
         ));
 
@@ -836,7 +836,7 @@ impl Node {
         ));
         bootstrapper.initialize(&network_params.ledger.genesis_account);
 
-        let mut aec_ticker = AecTicker::new(aec_service.clone(), active_elections.clone());
+        let mut aec_ticker = AecTicker::new(aec_service.clone());
 
         aec_ticker.add_plugin(ConfirmationSolicitorPlugin {
             message_flooder: message_flooder.clone(),
@@ -1116,7 +1116,7 @@ impl Node {
             ledger.clone(),
             network.clone(),
             online_reps.clone(),
-            active_elections.clone(),
+            aec_service.clone(),
             block_rates.clone(),
         );
         if config.enable_monitor {
