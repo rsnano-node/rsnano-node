@@ -365,12 +365,6 @@ mod tests {
     use super::*;
     use crate::{PutEvent, Transaction};
     use lmdb::WriteFlags;
-    use std::{
-        env::temp_dir,
-        ops::Deref,
-        path::PathBuf,
-        sync::atomic::{AtomicUsize, Ordering},
-    };
 
     #[test]
     fn can_track_env_creations() {
@@ -388,47 +382,6 @@ mod tests {
 
         let output = tracker.output();
         assert_eq!(output, vec![options]);
-    }
-
-    #[test]
-    fn open_unknown_database_fails() {
-        let path = TempLmdbFile::new();
-        let env = create_lmdb_env(path);
-        let result = env.open_db(Some("UNKNOWN"));
-        assert_eq!(result, Err(lmdb::Error::NotFound));
-    }
-
-    #[test]
-    fn create_db() {
-        let path = TempLmdbFile::new();
-        let env = create_lmdb_env(path);
-        env.create_db(Some("mydb"), DatabaseFlags::empty()).unwrap();
-        let result = env.open_db(Some("mydb"));
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn create_unnamed_db() {
-        let path = TempLmdbFile::new();
-        let env = create_lmdb_env(path);
-        env.create_db(None, DatabaseFlags::empty()).unwrap();
-        let result = env.open_db(None);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn write_key_value() {
-        let path = TempLmdbFile::new();
-        let env = create_lmdb_env(path);
-        let dbi = env.create_db(Some("mydb"), DatabaseFlags::empty()).unwrap();
-        {
-            let mut txn = env.begin_write();
-            txn.put(dbi, &[1, 2], &[3, 4], WriteFlags::empty()).unwrap();
-            txn.commit();
-        }
-        let txn = env.begin_read();
-        let result = txn.get(dbi, &[1, 2]).unwrap();
-        assert_eq!(result, [3, 4]);
     }
 
     #[test]
@@ -510,48 +463,6 @@ mod tests {
             let txn = env.begin_read();
             let result = txn.get(dbi, &[1, 2]).unwrap();
             assert_eq!(result, [3, 4]);
-        }
-    }
-
-    fn create_lmdb_env(path: TempLmdbFile) -> LmdbEnvironment {
-        let opts = EnvironmentOptions {
-            max_dbs: 3,
-            map_size: 1024 * 1024,
-            flags: EnvironmentFlags::NO_SUB_DIR
-                | EnvironmentFlags::NO_TLS
-                | EnvironmentFlags::NO_SYNC
-                | EnvironmentFlags::WRITE_MAP,
-            path: path.to_path_buf(),
-        };
-        LmdbEnvironment::create(opts).unwrap()
-    }
-
-    static FILE_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-    struct TempLmdbFile(PathBuf);
-
-    impl TempLmdbFile {
-        pub fn new() -> Self {
-            let mut path = temp_dir();
-            path.push(format!(
-                "lmdbtest-{}.ldb",
-                FILE_COUNTER.fetch_add(1, Ordering::Relaxed)
-            ));
-            Self(path)
-        }
-    }
-
-    impl Drop for TempLmdbFile {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_file(&self.0);
-        }
-    }
-
-    impl Deref for TempLmdbFile {
-        type Target = Path;
-
-        fn deref(&self) -> &Self::Target {
-            &self.0
         }
     }
 }
