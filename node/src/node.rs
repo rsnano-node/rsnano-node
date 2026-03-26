@@ -835,7 +835,7 @@ impl Node {
         ));
         bootstrapper.initialize(&network_params.ledger.genesis_account);
 
-        let mut aec_ticker = AecTicker::new(active_elections.clone(), steady_clock.clone());
+        let mut aec_ticker = AecTicker::new(aec_service.clone(), active_elections.clone());
 
         aec_ticker.add_plugin(ConfirmationSolicitorPlugin {
             message_flooder: message_flooder.clone(),
@@ -1187,20 +1187,20 @@ impl Node {
         };
 
         let bootstrap_election_activator = BootstrapElectionActivator {
-            active_elections: active_elections.clone(),
+            aec_service: aec_service.clone(),
             vote_cache: vote_cache.clone(),
             stats: stats.clone(),
         };
 
         let local_votes_remover = LocalVotesRemover {
-            active_elections: active_elections.clone(),
+            aec_service: aec_service.clone(),
             vote_history: vote_history.clone(),
         };
 
         let aec_fork_inserter = Arc::new(AecForkInserter {
             rep_weights: rep_weights.clone(),
             fork_cache: fork_cache.clone(),
-            active_elections: active_elections.clone(),
+            aec_service: aec_service.clone(),
             vote_cache: vote_cache.clone(),
         });
 
@@ -1225,7 +1225,7 @@ impl Node {
             ledger_event_handlers.add_mut(ForkDetector::new(
                 ledger.clone(),
                 ledger_snapshots.clone(),
-                active_elections.clone(),
+                aec_service.clone(),
             ));
         }
 
@@ -1255,8 +1255,7 @@ impl Node {
 
         let dependent_elections_confirmer = DependentElectionsConfirmer {
             confirming_set: confirming_set.clone(),
-            active_elections: active_elections.clone(),
-            clock: steady_clock.clone(),
+            aec_service: aec_service.clone(),
         };
 
         let fork_cache_updater = ForkCacheUpdater::new(fork_cache.clone());

@@ -7,12 +7,12 @@ use rsnano_ledger::{BlockError, LedgerEvent, ProcessResult, RepWeightCache};
 use rsnano_types::{Amount, Block, BlockHash, QualifiedRoot};
 use rsnano_utils::{EventHandlerMut, stats::Stats};
 
-use super::{ActiveElectionsContainer, ForkCache, VoteCache};
+use super::{AecService, ForkCache, VoteCache};
 
 pub(crate) struct AecForkInserter {
     pub(crate) rep_weights: Arc<RepWeightCache>,
     pub(crate) fork_cache: Arc<RwLock<ForkCache>>,
-    pub(crate) active_elections: Arc<RwLock<ActiveElectionsContainer>>,
+    pub(crate) aec_service: Arc<AecService>,
     pub(crate) vote_cache: Arc<Mutex<VoteCache>>,
 }
 
@@ -22,7 +22,7 @@ impl AecForkInserter {
         Self {
             rep_weights: Arc::new(RepWeightCache::default()),
             fork_cache: Arc::new(RwLock::new(ForkCache::new())),
-            active_elections: Arc::new(RwLock::new(ActiveElectionsContainer::default())),
+            aec_service: Arc::new(AecService::new_null()),
             vote_cache: Arc::new(Mutex::new(VoteCache::new(
                 Default::default(),
                 Arc::new(Stats::default()),
@@ -48,11 +48,7 @@ impl AecForkInserter {
     fn handle_fork(&self, fork: &Block) {
         let fork_tally = self.get_cached_tally(&fork.hash());
 
-        let added = self
-            .active_elections
-            .write()
-            .unwrap()
-            .try_add_fork(fork, fork_tally);
+        let added = self.aec_service.try_add_fork(fork, fork_tally);
 
         if added {
             debug!("Block was added to an existing election: {}", fork.hash());

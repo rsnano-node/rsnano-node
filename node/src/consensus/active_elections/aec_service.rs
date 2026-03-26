@@ -6,14 +6,16 @@ use std::{
 
 use rsnano_ledger::RepWeightCache;
 use rsnano_nullable_clock::{SteadyClock, Timestamp};
-use rsnano_types::{Amount, BlockHash, BlockPriority, QualifiedRoot, SavedBlock, VoteError};
+use rsnano_types::{
+    Amount, Block, BlockHash, BlockPriority, PublicKey, QualifiedRoot, SavedBlock, VoteError,
+};
 use rsnano_utils::sync::backpressure_channel::{self, Receiver, Sender};
 
 use crate::{
     consensus::{
         ActiveElectionsConfig, ActiveElectionsContainer, AecCooldownReason, AecEvent,
-        AecInsertError, AecInsertRequest, election::ElectionBehavior, ApplyVoteArgs, FilteredVote,
-        ReceivedVote,
+        AecInsertError, AecInsertRequest, ApplyVoteArgs, FilteredVote, ReceivedVote,
+        election::{ConfirmedElection, ElectionBehavior},
     },
     representatives::OnlineReps,
     utils::{BackpressureEventProcessor, spawn_backpressure_processor},
@@ -127,11 +129,48 @@ impl AecService {
             .remove_recently_confirmed(block_hash);
     }
 
+    pub(crate) fn confirm_dependent_elections(
+        &self,
+        confirmed: Vec<(SavedBlock, Option<ConfirmedElection>)>,
+    ) {
+        self.active
+            .write()
+            .unwrap()
+            .confirm_dependent_elections(confirmed, self.clock.now());
+    }
+
+    pub(crate) fn try_add_fork(&self, fork: &Block, fork_tally: Amount) -> bool {
+        self.active.write().unwrap().try_add_fork(fork, fork_tally)
+    }
+
+    pub(crate) fn transition_time(&self) {
+        self.active.write().unwrap().transition_time(self.clock.now());
+    }
+
+    pub(crate) fn transition_active(&self, block_hash: &BlockHash) -> bool {
+        self.active.write().unwrap().transition_active(block_hash)
+    }
+
+    pub(crate) fn remove_votes(
+        &self,
+        root: &QualifiedRoot,
+        voters: impl IntoIterator<Item = PublicKey>,
+    ) {
+        let voters = voters.into_iter().collect::<Vec<_>>();
+        self.active
+            .write()
+            .unwrap()
+            .remove_votes(root, voters.iter());
+    }
+
     pub(crate) fn activate_manual(&self, block: SavedBlock, priority: BlockPriority) -> bool {
         let hash = block.hash();
         let mut active = self.active.write().unwrap();
         if active
-            .insert(AecInsertRequest::new_manual(block, priority), self.clock.now())
+            .insert(
+                AecInsertRequest::new_manual(block, priority),
+                self.clock.now(),
+            )
             .is_ok()
         {
             active.transition_active(&hash);
@@ -145,7 +184,10 @@ impl AecService {
         self.active
             .write()
             .unwrap()
-            .insert(AecInsertRequest::new_hinted(block, priority), self.clock.now())
+            .insert(
+                AecInsertRequest::new_hinted(block, priority),
+                self.clock.now(),
+            )
             .is_ok()
     }
 
@@ -165,10 +207,10 @@ impl AecService {
         block: SavedBlock,
         priority: BlockPriority,
     ) -> Result<(), AecInsertError> {
-        self.active
-            .write()
-            .unwrap()
-            .insert(AecInsertRequest::new_priority(block, priority), self.clock.now())
+        self.active.write().unwrap().insert(
+            AecInsertRequest::new_priority(block, priority),
+            self.clock.now(),
+        )
     }
 
     pub(crate) fn bucket_len(&self, bucket: usize) -> usize {
@@ -187,7 +229,10 @@ impl AecService {
     }
 
     pub(crate) fn erase_lowest_prio_election(&self, bucket: usize) {
-        self.active.write().unwrap().erase_lowest_prio_election(bucket);
+        self.active
+            .write()
+            .unwrap()
+            .erase_lowest_prio_election(bucket);
     }
 
     pub(crate) fn apply_vote(
