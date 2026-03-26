@@ -46,10 +46,7 @@ mod tests {
         );
 
         service
-            .legacy_container()
-            .write()
-            .unwrap()
-            .insert(
+            .insert_for_test(
                 AecInsertRequest::new_priority(block, BlockPriority::new_test_instance()),
                 clock.now(),
             )
@@ -63,9 +60,7 @@ mod tests {
 
         service.apply_vote(&vote.into());
 
-        let aec_guard = service.legacy_container();
-        let aec_guard = aec_guard.read().unwrap();
-        let election = aec_guard.election_for_block(&block_hash).unwrap();
+        let election = service.election_for_block(&block_hash).unwrap();
         assert_eq!(election.winner_tally(), Amount::nano(50_000_000));
 
         // No quorum, because the vote of our rep has to be added to the online

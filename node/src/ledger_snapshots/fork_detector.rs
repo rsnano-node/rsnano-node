@@ -198,14 +198,6 @@ mod tests {
             vec![processed_results],
         )));
 
-        assert_eq!(
-            fork_detector
-                .aec_service
-                .legacy_container()
-                .read()
-                .unwrap()
-                .len(),
-            0
-        );
+        assert!(fork_detector.aec_service.is_empty());
     }
 }
