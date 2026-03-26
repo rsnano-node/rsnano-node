@@ -1,5 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
+use rsnano_nullable_clock::SteadyClock;
 use rsnano_types::{BlockHash, NetworkType, Root};
 use rsnano_utils::{CancellationToken, ticker::Tickable};
 
@@ -11,6 +12,7 @@ use crate::consensus::{
 /// Creates votes for blocks within the AEC
 pub(crate) struct AecVoter {
     aec_service: Arc<AecService>,
+    clock: Arc<SteadyClock>,
     vote_generators: Arc<VoteGenerators>,
     cps_limiter: CpsLimiter,
     current_bucket: usize,
@@ -20,12 +22,14 @@ pub(crate) struct AecVoter {
 impl AecVoter {
     pub(crate) fn new(
         aec_service: Arc<AecService>,
+        clock: Arc<SteadyClock>,
         vote_generators: Arc<VoteGenerators>,
         network: NetworkType,
         cps_limiter: CpsLimiter,
     ) -> Self {
         Self {
             aec_service,
+            clock,
             vote_generators,
             cps_limiter,
             current_bucket: bucket_count() - 1,
@@ -46,7 +50,7 @@ impl AecVoter {
 
 impl Tickable for AecVoter {
     fn tick(&mut self, cancel_token: &CancellationToken) {
-        let now = self.aec_service.now();
+        let now = self.clock.now();
         let mut voted = true;
         let mut vote_queue = Vec::new();
         while voted {

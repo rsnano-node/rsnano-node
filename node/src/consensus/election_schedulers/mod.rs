@@ -12,6 +12,7 @@ pub use optimistic_scheduler::*;
 use std::sync::{Arc, Mutex};
 
 use rsnano_ledger::{AnySet, Ledger, ProcessResult};
+use rsnano_nullable_clock::SteadyClock;
 use rsnano_output_tracker::{OutputListenerMt, OutputTrackerMt};
 use rsnano_types::{
     Account, AccountInfo, BlockHash, ConfirmationHeightInfo, NetworkType, SavedBlock,
@@ -45,6 +46,7 @@ impl ElectionSchedulers {
         config: NodeConfig,
         network_constants: NetworkConstants,
         aec_service: Arc<AecService>,
+        clock: Arc<SteadyClock>,
         ledger: Arc<Ledger>,
         stats: Arc<Stats>,
         vote_cache: Arc<Mutex<VoteCache>>,
@@ -80,6 +82,7 @@ impl ElectionSchedulers {
             config.priority_bucket.clone(),
             stats.clone(),
             aec_service,
+            clock,
         ));
 
         Self {
@@ -106,11 +109,13 @@ impl ElectionSchedulers {
         let confirming_set = Arc::new(ConfirmingSet::new_null());
         let online_reps = Arc::new(Mutex::new(OnlineReps::new_test_instance()));
         let aec_service = Arc::new(AecService::new_null());
+        let clock = Arc::new(SteadyClock::new_null());
 
         Self::new(
             config,
             network_constants,
             aec_service,
+            clock,
             ledger,
             stats,
             vote_cache,

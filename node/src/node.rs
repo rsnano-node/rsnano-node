@@ -673,6 +673,7 @@ impl Node {
             config.clone(),
             network_params.network.clone(),
             aec_service.clone(),
+            steady_clock.clone(),
             ledger.clone(),
             stats.clone(),
             vote_cache.clone(),
@@ -1203,6 +1204,7 @@ impl Node {
 
         let aec_voter = AecVoter::new(
             aec_service.clone(),
+            steady_clock.clone(),
             vote_generators.clone(),
             current_network,
             cps_limiter,

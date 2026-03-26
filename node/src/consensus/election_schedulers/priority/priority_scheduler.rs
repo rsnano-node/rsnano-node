@@ -7,6 +7,7 @@ use std::{
 };
 
 use rsnano_ledger::{AnySet, ConfirmedSet};
+use rsnano_nullable_clock::SteadyClock;
 use rsnano_output_tracker::{OutputListenerMt, OutputTrackerMt};
 use rsnano_types::{Account, AccountInfo, Amount, BlockHash, ConfirmationHeightInfo, SavedBlock};
 use rsnano_utils::{
@@ -31,6 +32,7 @@ pub struct PriorityScheduler {
     thread: Mutex<Option<JoinHandle<()>>>,
     bucket_stats: BucketStats,
     aec_service: Arc<AecService>,
+    clock: Arc<SteadyClock>,
     activate_successors_listener: OutputListenerMt<SavedBlock>,
     activations_per_bucket: Vec<AtomicU64>,
 }
@@ -40,6 +42,7 @@ impl PriorityScheduler {
         config: PriorityBucketConfig,
         stats: Arc<Stats>,
         aec_service: Arc<AecService>,
+        clock: Arc<SteadyClock>,
     ) -> Self {
         let mut buckets = Vec::with_capacity(prio_bucket_count());
         let mut activations_per_bucket = Vec::with_capacity(prio_bucket_count());
@@ -56,6 +59,7 @@ impl PriorityScheduler {
             stats,
             bucket_stats: BucketStats::default(),
             aec_service,
+            clock,
             activate_successors_listener: Default::default(),
             activations_per_bucket,
         }
@@ -213,7 +217,7 @@ impl PriorityScheduler {
         self.stats
             .inc(StatType::ElectionScheduler, DetailType::Loop);
 
-        let now = self.aec_service.now();
+        let now = self.clock.now();
         let mut buckets = self.buckets.lock().unwrap();
         let mut inserted = true;
 
@@ -347,6 +351,7 @@ mod tests {
         let config = PriorityBucketConfig::default();
         let stats = Arc::new(Stats::default());
         let aec_service = Arc::new(AecService::new_null());
-        PriorityScheduler::new(config, stats, aec_service)
+        let clock = Arc::new(SteadyClock::new_null());
+        PriorityScheduler::new(config, stats, aec_service, clock)
     }
 }
