@@ -69,7 +69,7 @@ use crate::{
         BootstrapElectionActivator, BootstrapStaleElections, ConfirmReqSender,
         ConfirmationSolicitorPlugin, CpsLimiter, CurrentRepTiers, DependentElectionsConfirmer,
         ForkCache, ForkCacheUpdater, LocalVoteHistory, LocalVotesRemover, RepTiersCalculator,
-        RequestAggregator, RequestAggregatorCleanup, VoteApplier, VoteBroadcaster, VoteCache,
+        RequestAggregator, RequestAggregatorCleanup, VoteBroadcaster, VoteCache,
         VoteCacheProcessor, VoteGenerators, VoteProcessor, VoteProcessorExt, VoteProcessorQueue,
         VoteProcessorQueueCleanup, VoteRebroadcastQueue, VoteRebroadcaster, WalletRepsChecker,
         WinnerBlockBroadcaster,
@@ -623,6 +623,10 @@ impl Node {
         let aec_service = Arc::new(AecService::new(
             config.active_elections.clone(),
             base_latency,
+            online_reps.clone(),
+            steady_clock.clone(),
+            rep_weights.clone(),
+            current_network == NetworkType::NanoDevNetwork,
         ));
         let aec_service_for_info = aec_service.clone();
         event_queues_info.add_leaf("aec", move || aec_service_for_info.event_queue_len());
@@ -643,17 +647,9 @@ impl Node {
             CpsLimiter::unlimited()
         };
 
-        let vote_applier = VoteApplier::new(
-            active_elections.clone(),
-            online_reps.clone(),
-            steady_clock.clone(),
-            rep_weights.clone(),
-            current_network == NetworkType::NanoDevNetwork,
-        );
-
         let vote_processor = Arc::new(VoteProcessor::new(
             vote_processor_queue.clone(),
-            vote_applier,
+            aec_service.clone(),
             stats.clone(),
         ));
 
@@ -1285,8 +1281,6 @@ impl Node {
         };
 
         spawn_backpressure_processor("Nano ev proc", ledger_rx, ledger_event_processor);
-
-        aec_service.observe_vote_processor(&vote_processor);
 
         stats_collector.add_source(stats.clone());
         stats_collector.add_source(online_reps.clone());
