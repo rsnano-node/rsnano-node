@@ -292,29 +292,16 @@ impl AecService {
             .priority_bucket_state(bucket, candidate_root)
     }
 
-    pub(crate) fn next_vote_to_broadcast(
+    pub(in crate::consensus) fn next_vote_to_broadcast_for_voter(
         &self,
         bucket: usize,
         vote_broadcast_interval: Duration,
         now: Timestamp,
     ) -> Option<(Root, BlockHash, VoteType)> {
-        let mut active = self.active.write().unwrap();
-        let vote_target = active.iter_bucket(bucket).find_map(|election| {
-            if election.can_vote(vote_broadcast_interval, now) {
-                Some((
-                    election.qualified_root().clone(),
-                    election.vote_type(),
-                    election.winner().hash(),
-                ))
-            } else {
-                None
-            }
-        });
-
-        vote_target.map(|(qualified_root, vote_type, winner_hash)| {
-            active.set_last_voted(&qualified_root, vote_type, now);
-            (qualified_root.root, winner_hash, vote_type)
-        })
+        self.active
+            .write()
+            .unwrap()
+            .next_vote_to_broadcast(bucket, vote_broadcast_interval, now)
     }
 
     pub fn clear_recently_confirmed(&self) {

@@ -4,7 +4,7 @@ use strum::EnumCount;
 
 use rsnano_ledger::RepWeights;
 use rsnano_nullable_clock::Timestamp;
-use rsnano_types::{Amount, Block, BlockHash, PublicKey, QualifiedRoot, SavedBlock};
+use rsnano_types::{Amount, Block, BlockHash, PublicKey, QualifiedRoot, Root, SavedBlock};
 use rsnano_utils::{
     container_info::{ContainerInfo, ContainerInfoProvider},
     stats::{StatsCollection, StatsSource},
@@ -115,6 +115,30 @@ impl ActiveElectionsContainer {
             return;
         };
         entry.election.voted(vote_type, timestamp);
+    }
+
+    pub(crate) fn next_vote_to_broadcast(
+        &mut self,
+        bucket_id: usize,
+        vote_broadcast_interval: Duration,
+        now: Timestamp,
+    ) -> Option<(Root, BlockHash, VoteType)> {
+        let vote_target = self.iter_bucket(bucket_id).find_map(|election| {
+            if election.can_vote(vote_broadcast_interval, now) {
+                Some((
+                    election.qualified_root().clone(),
+                    election.vote_type(),
+                    election.winner().hash(),
+                ))
+            } else {
+                None
+            }
+        });
+
+        vote_target.map(|(qualified_root, vote_type, winner_hash)| {
+            self.set_last_voted(&qualified_root, vote_type, now);
+            (qualified_root.root, winner_hash, vote_type)
+        })
     }
 
     fn ensure_not_stopped(&self) -> Result<(), AecInsertError> {
@@ -595,6 +619,32 @@ mod tests {
             ],
             &[&block_d, &block_c, &block_a, &block_b],
         )
+    }
+
+    #[test]
+    fn next_vote_to_broadcast_records_last_vote_once() {
+        let mut container = ActiveElectionsContainer::default();
+        let block = SavedBlock::new_test_instance();
+        let now = Timestamp::new_test_instance();
+        let interval = Duration::from_secs(30);
+        let priority = BlockPriority::new_test_instance();
+        let bucket = crate::consensus::election_schedulers::priority::bucket_index(
+            ElectionBehavior::Priority,
+            priority.balance,
+        );
+
+        container
+            .insert(AecInsertRequest::new_priority(block.clone(), priority), now)
+            .unwrap();
+
+        let first = container.next_vote_to_broadcast(bucket, interval, now);
+        let second = container.next_vote_to_broadcast(bucket, interval, now);
+
+        assert_eq!(
+            first,
+            Some((block.root(), block.hash(), VoteType::NonFinal))
+        );
+        assert_eq!(second, None);
     }
 
     fn test_final_vote(rep_key: &PrivateKey, block_hash: BlockHash) -> ReceivedVote {

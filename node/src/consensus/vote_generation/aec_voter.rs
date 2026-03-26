@@ -56,9 +56,12 @@ impl Tickable for AecVoter {
         while voted {
             voted = false;
             loop {
-                if let Some((root, winner_hash, vote_type)) = self
-                    .aec_service
-                    .next_vote_to_broadcast(self.current_bucket, self.vote_broadcast_interval, now)
+                if let Some((root, winner_hash, vote_type)) =
+                    self.aec_service.next_vote_to_broadcast_for_voter(
+                        self.current_bucket,
+                        self.vote_broadcast_interval,
+                        now,
+                    )
                 {
                     if vote_type == VoteType::NonFinal && !self.cps_limiter.try_vote(now) {
                         self.flush(&mut vote_queue);
