@@ -132,6 +132,7 @@ pub struct Node {
     pub wallets: Arc<Wallets>,
     pub vote_generators: Arc<VoteGenerators>,
     pub active: Arc<AecService>,
+    aec_delivery: Arc<crate::consensus::AecDelivery>,
     pub vote_processor: Arc<VoteProcessor>,
     vote_cache_processor: Arc<VoteCacheProcessor>,
     pub rep_crawler: Arc<RepCrawler>,
@@ -617,14 +618,15 @@ impl Node {
             _ => Duration::from_millis(1000),
         };
 
-        let aec_service = Arc::new(AecService::new(
+        let (aec_service, aec_delivery) = AecService::new_with_delivery(
             config.active_elections.clone(),
             base_latency,
             online_reps.clone(),
             steady_clock.clone(),
             rep_weights.clone(),
             current_network == NetworkType::NanoDevNetwork,
-        ));
+        );
+        let aec_service = Arc::new(aec_service);
         let aec_service_for_info = aec_service.clone();
         event_queues_info.add_leaf("aec", move || aec_service_for_info.event_queue_len());
 
@@ -1248,7 +1250,7 @@ impl Node {
             winner_block_broadcaster: winner_block_broadcaster.clone(),
         };
 
-        aec_service.start_event_processor("AEC ev proc", aec_event_processor);
+        aec_delivery.start_event_processor("AEC ev proc", aec_event_processor);
 
         let dependent_elections_confirmer = DependentElectionsConfirmer {
             confirming_set: confirming_set.clone(),
@@ -1351,6 +1353,7 @@ impl Node {
             wallets,
             vote_generators,
             active: aec_service,
+            aec_delivery,
             vote_processor,
             vote_cache_processor,
             rep_crawler,
@@ -1649,6 +1652,7 @@ impl Node {
         self.vote_processor.stop();
         self.election_schedulers.stop();
         self.aec_ticker.stop();
+        self.aec_delivery.stop();
         self.active.stop();
         self.vote_generators.stop();
         self.confirming_set.stop();
@@ -1789,8 +1793,8 @@ mod tests {
         let election = ConfirmedElection::new_test_instance();
         let winner_hash = election.winner.hash();
 
-        node.active
-            .simulate_event(AecEvent::ElectionConfirmed(election));
+        node.aec_delivery
+            .publish(AecEvent::ElectionConfirmed(election));
 
         let output = broadcast_tracker.wait_output().unwrap();
         assert_eq!(output, vec![winner_hash]);

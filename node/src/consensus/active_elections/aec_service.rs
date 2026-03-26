@@ -12,10 +12,9 @@ use rsnano_types::{
 use rsnano_utils::{
     container_info::{ContainerInfo, ContainerInfoProvider},
     stats::{StatsCollection, StatsSource},
-    sync::backpressure_channel::{self, Receiver, Sender},
 };
 
-use super::AecFacts;
+use super::{AecDelivery, AecFacts};
 
 use crate::{
     consensus::{
@@ -26,13 +25,11 @@ use crate::{
         election_schedulers::priority::PriorityBucketState,
     },
     representatives::OnlineReps,
-    utils::{BackpressureEventProcessor, spawn_backpressure_processor},
 };
 
 pub struct AecService {
     active: Arc<RwLock<ActiveElectionsContainer>>,
-    events_tx: Mutex<Option<Sender<AecEvent>>>,
-    events_rx: Mutex<Option<Receiver<AecEvent>>>,
+    delivery: Arc<AecDelivery>,
     online_reps: Arc<Mutex<OnlineReps>>,
     clock: Arc<SteadyClock>,
     rep_weights: Arc<RepWeightCache>,
@@ -50,30 +47,54 @@ impl AecService {
         rep_weights: Arc<RepWeightCache>,
         is_dev_network: bool,
     ) -> Self {
-        let (events_tx, events_rx) = backpressure_channel::channel(Self::EVENT_QUEUE_SOFT_LIMIT);
-
-        Self {
-            active: Arc::new(RwLock::new(ActiveElectionsContainer::new(
-                config,
-                base_latency,
-            ))),
-            events_tx: Mutex::new(Some(events_tx)),
-            events_rx: Mutex::new(Some(events_rx)),
+        Self::new_with_delivery(
+            config,
+            base_latency,
             online_reps,
             clock,
             rep_weights,
             is_dev_network,
-        }
+        )
+        .0
+    }
+
+    pub(crate) fn new_with_delivery(
+        config: ActiveElectionsConfig,
+        base_latency: Duration,
+        online_reps: Arc<Mutex<OnlineReps>>,
+        clock: Arc<SteadyClock>,
+        rep_weights: Arc<RepWeightCache>,
+        is_dev_network: bool,
+    ) -> (Self, Arc<AecDelivery>) {
+        let delivery = Arc::new(AecDelivery::new(Self::EVENT_QUEUE_SOFT_LIMIT));
+        (
+            Self {
+                active: Arc::new(RwLock::new(ActiveElectionsContainer::new(
+                    config,
+                    base_latency,
+                ))),
+                delivery: delivery.clone(),
+                online_reps,
+                clock,
+                rep_weights,
+                is_dev_network,
+            },
+            delivery,
+        )
     }
 
     pub fn new_null() -> Self {
+        Self::new_null_with_delivery().0
+    }
+
+    pub(crate) fn new_null_with_delivery() -> (Self, Arc<AecDelivery>) {
         let rep_weights = Arc::new(RepWeightCache::default());
         let online_reps = Arc::new(Mutex::new(
             OnlineReps::builder()
                 .rep_weights(rep_weights.clone())
                 .finish(),
         ));
-        Self::new(
+        Self::new_with_delivery(
             ActiveElectionsConfig::default(),
             Duration::from_secs(1),
             online_reps,
@@ -84,26 +105,7 @@ impl AecService {
     }
 
     pub(crate) fn event_queue_len(&self) -> usize {
-        self.events_tx
-            .lock()
-            .unwrap()
-            .as_ref()
-            .map(|sender| sender.len())
-            .unwrap_or(0)
-    }
-
-    pub(crate) fn start_event_processor<T>(&self, thread_name: impl Into<String>, processor: T)
-    where
-        T: BackpressureEventProcessor<AecEvent> + Send + 'static,
-    {
-        let receiver = self
-            .events_rx
-            .lock()
-            .unwrap()
-            .take()
-            .expect("AEC event processor already started");
-
-        spawn_backpressure_processor(thread_name, receiver, processor);
+        self.delivery.queue_len()
     }
 
     pub(crate) fn set_cooldown(&self, cool_down: bool, reason: AecCooldownReason) {
@@ -325,12 +327,7 @@ impl AecService {
         self.active.write().unwrap().cancel_all();
     }
 
-    pub fn simulate_event(&self, event: AecEvent) {
-        self.send_event(event);
-    }
-
     pub fn stop(&self) {
-        self.events_tx.lock().unwrap().take();
         self.active.write().unwrap().stop();
     }
 
@@ -398,9 +395,7 @@ impl AecService {
     }
 
     fn send_event(&self, event: AecEvent) {
-        if let Some(sender) = self.events_tx.lock().unwrap().as_ref() {
-            let _ = sender.send(event);
-        }
+        self.delivery.publish(event);
     }
 
     #[cfg(test)]
@@ -457,6 +452,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use crate::consensus::{AecEvent, AecInsertRequest};
+    use crate::utils::BackpressureEventProcessor;
     use rsnano_types::{
         BlockPriority, PrivateKey, SavedBlock, UnixMillisTimestamp, Vote, VoteSource,
     };
@@ -466,22 +462,22 @@ mod tests {
 
     #[test]
     fn construction_does_not_start_processing_implicitly() {
-        let service = AecService::new_null();
+        let (service, delivery) = AecService::new_null_with_delivery();
 
-        service.simulate_event(AecEvent::Recovered);
+        delivery.publish(AecEvent::Recovered);
 
         assert_eq!(service.event_queue_len(), 1);
     }
 
     #[test]
     fn processing_starts_only_when_explicitly_requested() {
-        let service = AecService::new_null();
+        let (_service, delivery) = AecService::new_null_with_delivery();
         let processor = StubProcessor::default();
 
-        service.simulate_event(AecEvent::Recovered);
+        delivery.publish(AecEvent::Recovered);
         assert!(processor.log().is_empty());
 
-        service.start_event_processor("aec-service-test", processor.clone());
+        delivery.start_event_processor("aec-service-test", processor.clone());
 
         let start = std::time::Instant::now();
         while processor.log().is_empty() && start.elapsed() < Duration::from_secs(5) {
@@ -493,20 +489,15 @@ mod tests {
 
     #[test]
     fn stop_closes_event_queue_and_rejects_further_publication() {
-        let service = AecService::new_null();
+        let (service, delivery) = AecService::new_null_with_delivery();
 
+        delivery.stop();
         service.stop();
-        service.simulate_event(AecEvent::Recovered);
+        delivery.publish(AecEvent::Recovered);
 
         assert_eq!(service.event_queue_len(), 0);
         assert!(matches!(
-            service
-                .events_rx
-                .lock()
-                .unwrap()
-                .as_ref()
-                .unwrap()
-                .try_recv(),
+            delivery.try_recv(),
             Err(TryRecvError::Disconnected)
         ));
     }
@@ -535,13 +526,11 @@ mod tests {
         let results = service.apply_vote(&vote.clone().into());
         assert_eq!(results.get(&block_hash), Some(&Ok(())));
 
-        let receiver_guard = service.events_rx.lock().unwrap();
-        let receiver = receiver_guard.as_ref().unwrap();
         let mut observed_vote_processed = false;
         let start = std::time::Instant::now();
 
         while start.elapsed() < Duration::from_secs(5) {
-            match receiver.try_recv() {
+            match service.delivery.try_recv() {
                 Ok(AecEvent::VoteProcessed(processed_vote, voter_weight, per_block_results)) => {
                     assert_eq!(processed_vote.vote.hashes, vote.vote.hashes);
                     assert_eq!(voter_weight, Amount::MAX);
