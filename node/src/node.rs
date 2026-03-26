@@ -215,10 +215,6 @@ impl Node {
     }
 
     fn new(args: NodeArgs, is_nulled: bool, mut node_id_key_file: NodeIdKeyFile) -> Self {
-        let mut tokio_runner = TokioRunner::new(args.config.io_threads);
-        tokio_runner.start();
-        let runtime = tokio_runner.handle().clone();
-
         let network_params = args.network_params;
         let current_network = network_params.network.current_network;
         let network_label = network_params.network.get_current_network_as_string();
@@ -244,28 +240,6 @@ impl Node {
         if flags.enable_voting {
             config.enable_voting = true;
         }
-
-        let work_factory = Arc::new(
-            WorkFactory::builder(runtime.clone())
-                .local_work_pool(|p| {
-                    p.threads(config.work_threads as usize)
-                        .cpu_rate_limit(Duration::from_millis(config.pow_sleep_interval_ns as u64))
-                        .opencl_config(config.opencl.clone())
-                        .enable_gpu(config.enable_opencl)
-                })
-                .work_peers(config.work_peers.clone())
-                .finish(),
-        );
-        info!(
-            "Work pool threads: {} ({})",
-            work_factory.work_threads(),
-            if work_factory.has_opencl() {
-                "OpenCL"
-            } else {
-                "CPU"
-            }
-        );
-        info!("Work peers: {}", config.work_peers.len());
 
         let node_observer = args.event_sender;
         // Time relative to the start of the node. This makes time exlpicit and enables us to
@@ -314,12 +288,11 @@ impl Node {
         let mut ledger_path = application_path.clone();
         ledger_path.push("data.ldb");
 
-        let lmdb_env_factory = if is_nulled {
+        let lmdb_env_factory = if is_nulled || flags.disable_ledger_storage {
             LmdbEnvironmentFactory::new_null()
         } else {
             LmdbEnvironmentFactory::default()
         };
-
         info!("LMDB sync strategy: {:?}", config.lmdb_config.sync);
         info!("Loading ledger, this may take a while...");
         let (ledger_tx, ledger_rx) = backpressure_channel::channel(1024 * 5);
@@ -391,6 +364,32 @@ impl Node {
             "Worker".to_string(),
         ));
         let mut ticker_pool = TickerPool::with_thread_pool(workers.clone());
+
+        let mut tokio_runner = TokioRunner::new(config.io_threads);
+        tokio_runner.start();
+        let runtime = tokio_runner.handle().clone();
+
+        let work_factory = Arc::new(
+            WorkFactory::builder(runtime.clone())
+                .local_work_pool(|p| {
+                    p.threads(config.work_threads as usize)
+                        .cpu_rate_limit(Duration::from_millis(config.pow_sleep_interval_ns as u64))
+                        .opencl_config(config.opencl.clone())
+                        .enable_gpu(config.enable_opencl)
+                })
+                .work_peers(config.work_peers.clone())
+                .finish(),
+        );
+        info!(
+            "Work pool threads: {} ({})",
+            work_factory.work_threads(),
+            if work_factory.has_opencl() {
+                "OpenCL"
+            } else {
+                "CPU"
+            }
+        );
+        info!("Work peers: {}", config.work_peers.len());
 
         let mut inbound_message_queue =
             InboundMessageQueue::new(config.message_processor.max_queue);
@@ -532,7 +531,7 @@ impl Node {
         let mut wallets_path = application_path.clone();
         wallets_path.push("wallets.ldb");
 
-        let wallets_env = if is_nulled {
+        let wallets_env = if is_nulled || flags.disable_wallet_storage {
             Arc::new(LmdbEnvironment::new_null())
         } else {
             let options = EnvironmentOptions {
@@ -551,7 +550,6 @@ impl Node {
         };
 
         let wallets_config = global_config.wallets_config();
-
         let mut wallets = Wallets::new(
             wallets_config.clone(),
             wallets_env,

@@ -17,7 +17,6 @@ use rsnano_node::{
 };
 use rsnano_rpc_client::{NanoRpcClient, Url};
 use rsnano_rpc_server::run_rpc_server;
-use rsnano_store_lmdb::SyncStrategy;
 use rsnano_types::{
     Account, Amount, Block, BlockHash, DEV_GENESIS_KEY, Epoch, NetworkType, PrivateKey, PublicKey,
     SavedBlock, StateBlockArgs, WalletId,
@@ -45,11 +44,9 @@ impl System {
 
     pub fn default_config() -> NodeConfig {
         let network_params = NetworkParams::new(NetworkType::NanoDevNetwork);
-        let port = get_available_port();
-        let mut config = NodeConfig::new(Some(port), &network_params, 1);
+        let mut config = NodeConfig::new(Some(0), &network_params, 1);
         config.representative_vote_weight_minimum = Amount::ZERO;
         config.io_threads = 1;
-        config.lmdb_config.sync = SyncStrategy::NosyncUnsafeWriteMap;
         // process blocks sequentially
         config.block_processor.batch_size = 1;
         config.block_processor_threads = 1;
@@ -117,7 +114,17 @@ impl System {
 
         if self.nodes.len() > 1 && !disconnected {
             let other = &self.nodes[0];
-            let node_addr = node.tcp_listener.local_address();
+            let start = Instant::now();
+            let node_addr = loop {
+                let addr = node.tcp_listener.local_address();
+                if addr.port() != 0 {
+                    break addr;
+                }
+                if start.elapsed() > Duration::from_secs(5) {
+                    panic!("node listener did not bind to a real port");
+                }
+                sleep(Duration::from_millis(10));
+            };
             if let Err(e) = other.peer_connector.connect_to(node_addr) {
                 panic!("Could not connect to {}. Reason: {:?}", node_addr, e);
             }
@@ -155,6 +162,9 @@ impl System {
         flags: NodeFlags,
         event_sink: Option<SyncSender<NodeEvent>>,
     ) -> Node {
+        let mut flags = flags;
+        flags.disable_ledger_storage = true;
+        flags.disable_wallet_storage = true;
         let path = unique_path().expect("Could not get a unique path");
         let mut builder = NodeBuilder::new(self.network_params.network.current_network)
             .data_path(path)

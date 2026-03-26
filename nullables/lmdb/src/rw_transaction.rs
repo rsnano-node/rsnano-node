@@ -1,6 +1,6 @@
 use std::{
     rc::Rc,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}},
     time::{Duration, Instant},
 };
 
@@ -37,8 +37,11 @@ impl WriteTransaction {
         Self::with_txn(RwTransaction::new(txn))
     }
 
-    pub fn new_null(databases: Arc<Mutex<Vec<ConfiguredDatabase>>>) -> Self {
-        Self::with_txn(RwTransaction::new_null(databases))
+    pub fn new_null(
+        databases: Arc<Mutex<Vec<ConfiguredDatabase>>>,
+        write_active: Arc<AtomicBool>,
+    ) -> Self {
+        Self::with_txn(RwTransaction::new_null(databases, write_active))
     }
 
     fn with_txn(txn: RwTransaction) -> Self {
@@ -166,12 +169,23 @@ impl RwTransaction {
         }
     }
 
-    pub fn new_null(databases: Arc<Mutex<Vec<ConfiguredDatabase>>>) -> Self {
+    pub fn new_null(
+        databases: Arc<Mutex<Vec<ConfiguredDatabase>>>,
+        write_active: Arc<AtomicBool>,
+    ) -> Self {
+        while write_active
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            std::thread::yield_now();
+        }
         let db_copies = databases.lock().unwrap().clone();
         Self {
             strategy: RwTransactionStrategy::Nulled(RwTransactionStub {
                 db_copies,
                 databases,
+                write_active,
+                released: false,
             }),
         }
     }
@@ -363,6 +377,8 @@ impl RwTransactionWrapper {
 pub struct RwTransactionStub {
     db_copies: Vec<ConfiguredDatabase>,
     databases: Arc<Mutex<Vec<ConfiguredDatabase>>>,
+    write_active: Arc<AtomicBool>,
+    released: bool,
 }
 
 impl RwTransactionStub {
@@ -410,11 +426,27 @@ impl RwTransactionStub {
     }
 
     fn commit(self) {
-        *self.databases.lock().unwrap() = self.db_copies;
+        let mut this = self;
+        *this.databases.lock().unwrap() = std::mem::take(&mut this.db_copies);
+        this.release_write_lock();
     }
 
     fn del(&mut self, database: LmdbDatabase, key: &[u8]) -> lmdb::Result<()> {
         self.get_database_mut(database)?.entries.remove(key);
         Ok(())
+    }
+
+    fn release_write_lock(mut self) {
+        self.write_active.store(false, Ordering::Release);
+        self.released = true;
+    }
+}
+
+impl Drop for RwTransactionStub {
+    fn drop(&mut self) {
+        if !self.released {
+            self.write_active.store(false, Ordering::Release);
+            self.released = true;
+        }
     }
 }
