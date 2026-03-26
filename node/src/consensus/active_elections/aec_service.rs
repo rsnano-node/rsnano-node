@@ -20,7 +20,8 @@ use super::AecFacts;
 use crate::{
     consensus::{
         ActiveElectionsConfig, ActiveElectionsContainer, AecCooldownReason, AecEvent,
-        AecInsertError, AecInsertRequest, AecTickerRead, ApplyVoteArgs, FilteredVote, ReceivedVote,
+        AecInsertError, AecInsertRequest, AecSchedulerRequest, AecTickerRead, ApplyVoteArgs,
+        FilteredVote, ReceivedVote,
         election::{ConfirmedElection, Election, ElectionBehavior, ElectionState, VoteType},
         election_schedulers::priority::PriorityBucketState,
     },
@@ -234,7 +235,20 @@ impl AecService {
             .remove_votes(root, voters.iter());
     }
 
-    pub(crate) fn insert(&self, request: AecInsertRequest) -> Result<(), AecInsertError> {
+    pub(crate) fn scheduler_activate(
+        &self,
+        request: AecSchedulerRequest,
+    ) -> Result<(), AecInsertError> {
+        let hash = request.block_hash();
+        let transition_active = request.transitions_to_active();
+        self.insert_impl(request.into())?;
+        if transition_active {
+            self.transition_active(&hash);
+        }
+        Ok(())
+    }
+
+    fn insert_impl(&self, request: AecInsertRequest) -> Result<(), AecInsertError> {
         let facts = self
             .active
             .write()
@@ -249,7 +263,7 @@ impl AecService {
         block: SavedBlock,
         priority: BlockPriority,
     ) -> Result<(), AecInsertError> {
-        self.insert(AecInsertRequest::new_priority(block, priority))
+        self.insert_impl(AecInsertRequest::new_priority(block, priority))
     }
 
     pub(crate) fn priority_bucket_state(

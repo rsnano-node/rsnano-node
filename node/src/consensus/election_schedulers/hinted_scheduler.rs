@@ -20,7 +20,7 @@ use rsnano_utils::{
 use super::VoteCache;
 use crate::{
     cementation::ConfirmingSet,
-    consensus::{AecInsertRequest, AecService, election::ElectionBehavior},
+    consensus::{AecSchedulerRequest, AecService, election::ElectionBehavior},
     representatives::OnlineReps,
 };
 
@@ -201,7 +201,7 @@ impl HintedScheduler {
                 let priority = any.block_priority(&block);
                 let inserted = self
                     .aec_service
-                    .insert(AecInsertRequest::new_hinted(block, priority))
+                    .scheduler_activate(AecSchedulerRequest::hinted(block, priority))
                     .is_ok();
 
                 self.stats.inc(
