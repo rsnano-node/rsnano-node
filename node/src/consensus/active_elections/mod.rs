@@ -186,4 +186,57 @@ impl AecInsertRequest {
     }
 }
 
+pub enum AecSchedulerRequest {
+    Manual {
+        block: SavedBlock,
+        priority: BlockPriority,
+    },
+    Hinted {
+        block: SavedBlock,
+        priority: BlockPriority,
+    },
+    Optimistic {
+        block: SavedBlock,
+        priority: BlockPriority,
+    },
+}
+
+impl AecSchedulerRequest {
+    pub fn manual(block: SavedBlock, priority: BlockPriority) -> Self {
+        Self::Manual { block, priority }
+    }
+
+    pub fn hinted(block: SavedBlock, priority: BlockPriority) -> Self {
+        Self::Hinted { block, priority }
+    }
+
+    pub fn optimistic(block: SavedBlock, priority: BlockPriority) -> Self {
+        Self::Optimistic { block, priority }
+    }
+
+    fn block_hash(&self) -> BlockHash {
+        match self {
+            Self::Manual { block, .. }
+            | Self::Hinted { block, .. }
+            | Self::Optimistic { block, .. } => block.hash(),
+        }
+    }
+
+    fn transitions_to_active(&self) -> bool {
+        matches!(self, Self::Manual { .. })
+    }
+}
+
+impl From<AecSchedulerRequest> for AecInsertRequest {
+    fn from(value: AecSchedulerRequest) -> Self {
+        match value {
+            AecSchedulerRequest::Manual { block, priority } => Self::new_manual(block, priority),
+            AecSchedulerRequest::Hinted { block, priority } => Self::new_hinted(block, priority),
+            AecSchedulerRequest::Optimistic { block, priority } => {
+                Self::new_optimistic(block, priority)
+            }
+        }
+    }
+}
+
 const AEC_STAT_KEY: &str = "active_elections";
