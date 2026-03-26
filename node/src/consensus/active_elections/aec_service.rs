@@ -22,6 +22,7 @@ use crate::{
         ActiveElectionsConfig, ActiveElectionsContainer, AecCooldownReason, AecEvent,
         AecInsertError, AecInsertRequest, ApplyVoteArgs, FilteredVote, ReceivedVote,
         election::{ConfirmedElection, Election, ElectionBehavior, VoteType},
+        election_schedulers::priority::PriorityBucketState,
     },
     representatives::OnlineReps,
     utils::{BackpressureEventProcessor, spawn_backpressure_processor},
@@ -123,6 +124,8 @@ impl AecService {
     }
 
     // Shared AEC query surface used by production callers and tests.
+    // These methods answer AEC-shaped questions without exposing caller-specific
+    // traversal or runtime helpers.
     pub fn vacancy(&self) -> i64 {
         self.active.read().unwrap().vacancy()
     }
@@ -249,28 +252,15 @@ impl AecService {
         self.insert(AecInsertRequest::new_priority(block, priority))
     }
 
-    pub(crate) fn bucket_len(&self, bucket: usize) -> usize {
-        self.active.read().unwrap().bucket_len(bucket)
-    }
-
-    pub(crate) fn lowest_priority(
+    pub(crate) fn priority_bucket_state(
         &self,
         bucket: usize,
-    ) -> Option<(QualifiedRoot, rsnano_types::TimePriority)> {
-        self.active.read().unwrap().lowest_priority(bucket)
-    }
-
-    pub(crate) fn find_bucket(&self, root: &QualifiedRoot) -> Option<usize> {
-        self.active.read().unwrap().find_bucket(root)
-    }
-
-    pub(crate) fn erase_lowest_prio_election(&self, bucket: usize) {
-        let facts = self
-            .active
-            .write()
+        candidate_root: &QualifiedRoot,
+    ) -> PriorityBucketState {
+        self.active
+            .read()
             .unwrap()
-            .erase_lowest_prio_election(bucket);
-        self.publish_facts(facts);
+            .priority_bucket_state(bucket, candidate_root)
     }
 
     pub(crate) fn next_vote_to_broadcast(

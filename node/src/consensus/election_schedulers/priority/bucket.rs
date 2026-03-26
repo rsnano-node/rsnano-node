@@ -1,88 +1,13 @@
-use std::sync::atomic::Ordering;
-
-use rsnano_nullable_clock::Timestamp;
 use rsnano_types::{BlockHash, BlockPriority, QualifiedRoot, SavedBlock, TimePriority};
 
-use super::{
-    bucket_stats::BucketStats,
-    ordered_blocks::{BlockEntry, OrderedBlocks},
-};
-use crate::consensus::{ActiveElectionsContainer, AecInsertError, AecService};
+use super::ordered_blocks::{BlockEntry, OrderedBlocks};
 
-pub(crate) trait PriorityAecAccess {
-    fn bucket_len(&self, bucket_id: usize) -> usize;
-    fn lowest_priority(&self, bucket_id: usize) -> Option<(QualifiedRoot, TimePriority)>;
-    fn vacancy(&self) -> i64;
-    fn find_bucket(&self, root: &QualifiedRoot) -> Option<usize>;
-    fn erase_lowest_prio_election(&self, bucket_id: usize);
-    fn insert_priority(
-        &self,
-        block: SavedBlock,
-        priority: BlockPriority,
-        now: Timestamp,
-    ) -> Result<(), AecInsertError>;
-}
-
-impl PriorityAecAccess for ActiveElectionsContainer {
-    fn bucket_len(&self, bucket_id: usize) -> usize {
-        self.bucket_len(bucket_id)
-    }
-
-    fn lowest_priority(&self, bucket_id: usize) -> Option<(QualifiedRoot, TimePriority)> {
-        self.lowest_priority(bucket_id)
-    }
-
-    fn vacancy(&self) -> i64 {
-        self.vacancy()
-    }
-
-    fn find_bucket(&self, root: &QualifiedRoot) -> Option<usize> {
-        self.find_bucket(root)
-    }
-
-    fn erase_lowest_prio_election(&self, _bucket_id: usize) {
-        unreachable!("mutation requires mutable access")
-    }
-
-    fn insert_priority(
-        &self,
-        _block: SavedBlock,
-        _priority: BlockPriority,
-        _now: Timestamp,
-    ) -> Result<(), AecInsertError> {
-        unreachable!("mutation requires mutable access")
-    }
-}
-
-impl PriorityAecAccess for AecService {
-    fn bucket_len(&self, bucket_id: usize) -> usize {
-        self.bucket_len(bucket_id)
-    }
-
-    fn lowest_priority(&self, bucket_id: usize) -> Option<(QualifiedRoot, TimePriority)> {
-        self.lowest_priority(bucket_id)
-    }
-
-    fn vacancy(&self) -> i64 {
-        self.vacancy()
-    }
-
-    fn find_bucket(&self, root: &QualifiedRoot) -> Option<usize> {
-        self.find_bucket(root)
-    }
-
-    fn erase_lowest_prio_election(&self, bucket_id: usize) {
-        self.erase_lowest_prio_election(bucket_id)
-    }
-
-    fn insert_priority(
-        &self,
-        block: SavedBlock,
-        priority: BlockPriority,
-        _now: Timestamp,
-    ) -> Result<(), AecInsertError> {
-        self.insert_priority(block, priority)
-    }
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct PriorityBucketState {
+    pub active_len: usize,
+    pub contains_candidate: bool,
+    pub lowest: Option<(QualifiedRoot, TimePriority)>,
+    pub vacancy: i64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -112,15 +37,13 @@ impl Default for PriorityBucketConfig {
 pub struct Bucket {
     config: PriorityBucketConfig,
     block_queue: OrderedBlocks,
-    bucket_id: usize,
 }
 
 impl Bucket {
-    pub fn new(config: PriorityBucketConfig, bucket_id: usize) -> Self {
+    pub fn new(config: PriorityBucketConfig, _bucket_id: usize) -> Self {
         Self {
             config,
             block_queue: Default::default(),
-            bucket_id,
         }
     }
 
@@ -136,8 +59,18 @@ impl Bucket {
         self.len() == 0
     }
 
+    pub(crate) fn reserved_elections(&self) -> usize {
+        self.config.reserved_elections
+    }
+
     pub fn blocks(&self) -> impl Iterator<Item = &SavedBlock> {
         self.block_queue.iter().map(|i| &i.block)
+    }
+
+    pub(crate) fn pop_highest_priority(&mut self) -> Option<(SavedBlock, BlockPriority)> {
+        self.block_queue
+            .pop_highest_prio()
+            .map(|entry| (entry.block, entry.priority))
     }
 
     pub fn insert(
@@ -162,78 +95,28 @@ impl Bucket {
         }
     }
 
-    pub(crate) fn available(&self, aec: &impl PriorityAecAccess) -> bool {
+    pub(crate) fn available(&self, state: &PriorityBucketState) -> bool {
         let Some(highest_block) = self.block_queue.highest_prio() else {
             // No blocks enqueued
             return false;
         };
 
         let candidate_prio = highest_block.priority.time;
-        let bucket_len = aec.bucket_len(self.bucket_id);
-        let lowest_prio = aec.lowest_priority(self.bucket_id);
-
-        let can_reprioritize = lowest_prio
-            .map(|(_, lowest)| candidate_prio > lowest)
+        let can_reprioritize = state
+            .lowest
+            .as_ref()
+            .map(|(_, lowest)| candidate_prio > *lowest)
             .unwrap_or(false);
 
         if can_reprioritize {
             return true;
         }
 
-        if bucket_len >= self.config.reserved_elections {
+        if state.active_len >= self.config.reserved_elections {
             return false;
         }
 
-        aec.vacancy() > 0 // cooldown check. TODO: check for cooldown explicitly
-    }
-
-    pub(crate) fn activate(
-        &mut self,
-        aec: &impl PriorityAecAccess,
-        now: Timestamp,
-        stats: &BucketStats,
-    ) {
-        if !self.available(aec) {
-            return;
-        }
-
-        let Some(top) = self.block_queue.pop_highest_prio() else {
-            return; // Not activated;
-        };
-
-        let block = top.block;
-        let priority = top.priority;
-        let root = block.qualified_root();
-
-        if aec.find_bucket(&root) == Some(self.bucket_id) {
-            stats
-                .activate_failed_duplicate
-                .fetch_add(1, Ordering::Relaxed);
-            return;
-        }
-
-        if aec.bucket_len(self.bucket_id) >= self.config.reserved_elections {
-            // TODO aec.replace(old, new);
-            aec.erase_lowest_prio_election(self.bucket_id);
-            stats.replaced.fetch_add(1, Ordering::Relaxed);
-        }
-
-        match aec.insert_priority(block, priority, now) {
-            Ok(_) => {
-                stats.activate_success.fetch_add(1, Ordering::Relaxed);
-            }
-            Err(AecInsertError::RecentlyConfirmed) => {
-                stats
-                    .activate_failed_confirmed
-                    .fetch_add(1, Ordering::Relaxed);
-            }
-            Err(AecInsertError::Duplicate) => {
-                stats
-                    .activate_failed_duplicate
-                    .fetch_add(1, Ordering::Relaxed);
-            }
-            Err(AecInsertError::Stopped) => {}
-        }
+        state.vacancy > 0 // cooldown check. TODO: check for cooldown explicitly
     }
 }
 
@@ -265,8 +148,7 @@ mod tests {
 
         assert_eq!(bucket.len(), 0);
         assert_eq!(bucket.contains(&BlockHash::from(1)), false);
-        let aec = ActiveElectionsContainer::default();
-        assert_eq!(bucket.available(&aec), false);
+        assert_eq!(bucket.available(&PriorityBucketState::default()), false);
     }
 
     #[test]
@@ -282,8 +164,13 @@ mod tests {
 
         assert_eq!(bucket.len(), 1);
         assert_eq!(bucket.contains(&block.hash()), true);
-        let aec = ActiveElectionsContainer::default();
-        assert_eq!(bucket.available(&aec), true);
+        assert_eq!(
+            bucket.available(&PriorityBucketState {
+                vacancy: 1,
+                ..Default::default()
+            }),
+            true
+        );
     }
 
     #[test]
