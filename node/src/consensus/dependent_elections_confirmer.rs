@@ -20,7 +20,8 @@ impl DependentElectionsConfirmer {
     /// Confirmed blocks might implicitly confirm dependent elections
     pub fn confirm_dependent_elections(&self, confirmed_blocks: &Vec<(SavedBlock, BlockHash)>) {
         let blocks_plus_election = self.blocks_plus_elections(confirmed_blocks);
-        self.aec_service.confirm_dependent_elections(blocks_plus_election);
+        self.aec_service
+            .confirm_dependent_elections(blocks_plus_election);
     }
 
     fn blocks_plus_elections(

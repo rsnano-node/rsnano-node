@@ -65,14 +65,13 @@ use crate::{
     cementation::{ConfirmingSet, TrackConfirmationTimes},
     config::{GlobalConfig, NetworkParams, NodeConfig, NodeFlags},
     consensus::{
-        AecForkInserter, AecService, AecTicker, AecVoter,
-        BootstrapElectionActivator, BootstrapStaleElections, ConfirmReqSender,
-        ConfirmationSolicitorPlugin, CpsLimiter, CurrentRepTiers, DependentElectionsConfirmer,
-        ForkCache, ForkCacheUpdater, LocalVoteHistory, LocalVotesRemover, RepTiersCalculator,
-        RequestAggregator, RequestAggregatorCleanup, VoteBroadcaster, VoteCache,
-        VoteCacheProcessor, VoteGenerators, VoteProcessor, VoteProcessorExt, VoteProcessorQueue,
-        VoteProcessorQueueCleanup, VoteRebroadcastQueue, VoteRebroadcaster, WalletRepsChecker,
-        WinnerBlockBroadcaster,
+        AecForkInserter, AecService, AecTicker, AecVoter, BootstrapElectionActivator,
+        BootstrapStaleElections, ConfirmReqSender, ConfirmationSolicitorPlugin, CpsLimiter,
+        CurrentRepTiers, DependentElectionsConfirmer, ForkCache, ForkCacheUpdater,
+        LocalVoteHistory, LocalVotesRemover, RepTiersCalculator, RequestAggregator,
+        RequestAggregatorCleanup, VoteBroadcaster, VoteCache, VoteCacheProcessor, VoteGenerators,
+        VoteProcessor, VoteProcessorExt, VoteProcessorQueue, VoteProcessorQueueCleanup,
+        VoteRebroadcastQueue, VoteRebroadcaster, WalletRepsChecker, WinnerBlockBroadcaster,
         election::ConfirmedElection,
         election_schedulers::{ElectionSchedulers, ElectionSchedulersPlugin},
         get_bootstrap_weights, log_bootstrap_weights,
@@ -1788,7 +1787,8 @@ mod tests {
         let election = ConfirmedElection::new_test_instance();
         let winner_hash = election.winner.hash();
 
-        node.active.simulate_event(AecEvent::ElectionConfirmed(election));
+        node.active
+            .simulate_event(AecEvent::ElectionConfirmed(election));
 
         let output = broadcast_tracker.wait_output().unwrap();
         assert_eq!(output, vec![winner_hash]);

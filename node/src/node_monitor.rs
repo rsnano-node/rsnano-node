@@ -11,9 +11,7 @@ use rsnano_network::Network;
 use rsnano_utils::{CancellationToken, ticker::Tickable};
 
 use crate::{
-    block_rate_calculator::CurrentBlockRates,
-    consensus::AecService,
-    representatives::OnlineReps,
+    block_rate_calculator::CurrentBlockRates, consensus::AecService, representatives::OnlineReps,
 };
 
 /// Periodically prints info about BPS, CPS, elections, peers,...

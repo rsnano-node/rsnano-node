@@ -142,7 +142,10 @@ mod election_scheduler {
         let block = blocks.last().unwrap();
         assert_timely2(|| node.is_active_hash(&block.hash()));
         assert_eq!(
-            node.active.election_for_block(&block.hash()).unwrap().behavior(),
+            node.active
+                .election_for_block(&block.hash())
+                .unwrap()
+                .behavior(),
             ElectionBehavior::Optimistic
         );
 
@@ -156,7 +159,10 @@ mod election_scheduler {
 
         // Verify priority transition
         assert_eq!(
-            node.active.election_for_block(&block.hash()).unwrap().behavior(),
+            node.active
+                .election_for_block(&block.hash())
+                .unwrap()
+                .behavior(),
             ElectionBehavior::Priority
         );
         assert!(node.is_active_root(&block.qualified_root()));

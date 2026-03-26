@@ -1,6 +1,5 @@
 use crate::{
-    block_processing::LedgerPipelineEvent, consensus::AecService,
-    ledger_snapshots::LedgerSnapshots,
+    block_processing::LedgerPipelineEvent, consensus::AecService, ledger_snapshots::LedgerSnapshots,
 };
 use rsnano_ledger::LedgerEvent;
 use rsnano_ledger::{BlockError, Ledger};
@@ -50,7 +49,7 @@ mod tests {
     use crate::{
         block_processing::LedgerPipelineEvent,
         block_processing::{BlockSource, ProcessedResult},
-        consensus::{AecService, AecInsertRequest, election::ElectionBehavior},
+        consensus::{AecInsertRequest, AecService, election::ElectionBehavior},
         ledger_snapshots::{LedgerSnapshots, fork_detector::ForkDetector},
     };
     use rsnano_ledger::LedgerEvent;
@@ -185,11 +184,8 @@ mod tests {
 
         let ledger = Arc::new(Ledger::new_null());
         let ledger_snapshots = LedgerSnapshots::new_null();
-        let mut fork_detector = ForkDetector::new(
-            ledger.clone(),
-            ledger_snapshots.into(),
-            aec_service.clone(),
-        );
+        let mut fork_detector =
+            ForkDetector::new(ledger.clone(), ledger_snapshots.into(), aec_service.clone());
 
         let processed_results = ProcessedResult {
             block: block.into(),
@@ -203,7 +199,12 @@ mod tests {
         )));
 
         assert_eq!(
-            fork_detector.aec_service.legacy_container().read().unwrap().len(),
+            fork_detector
+                .aec_service
+                .legacy_container()
+                .read()
+                .unwrap()
+                .len(),
             0
         );
     }

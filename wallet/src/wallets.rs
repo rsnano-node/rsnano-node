@@ -216,7 +216,13 @@ impl Wallets {
     }
 
     pub fn wallet_ids(&self) -> Vec<WalletId> {
-        let mut ids = self.wallets.lock().unwrap().keys().copied().collect::<Vec<_>>();
+        let mut ids = self
+            .wallets
+            .lock()
+            .unwrap()
+            .keys()
+            .copied()
+            .collect::<Vec<_>>();
         ids.sort_unstable();
         ids
     }

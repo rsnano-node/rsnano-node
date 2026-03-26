@@ -5,8 +5,7 @@ use std::{
 
 use super::{
     AecService, AecTickerPlugin, ConfirmationSolicitor, confirm_req_sender::ConfirmReqSender,
-    election::ElectionState,
-    winner_block_broadcaster::WinnerBlockBroadcaster,
+    election::ElectionState, winner_block_broadcaster::WinnerBlockBroadcaster,
 };
 use crate::{representatives::OnlineReps, transport::MessageFlooder};
 
