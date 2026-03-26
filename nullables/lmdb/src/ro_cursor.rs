@@ -133,7 +133,51 @@ impl<'a> Iterator for Iter<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{LmdbDatabase, LmdbEnvironment, Transaction};
+    use crate::{LmdbDatabase, LmdbEnvironment, LmdbEnvironmentFactory, Transaction};
+    use lmdb::{DatabaseFlags, EnvironmentFlags, WriteFlags};
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn iter() {
+        let _guard1 = FileDropGuard::new("/tmp/rsnano-cursor-test.ldb".as_ref());
+        let _guard2 = FileDropGuard::new("/tmp/rsnano-cursor-test.ldb-lock".as_ref());
+        let env = create_real_lmdb_env("/tmp/rsnano-cursor-test.ldb");
+        create_test_database(&env);
+        let database = env.open_db(Some("foo")).unwrap();
+        let txn = env.begin_read();
+        let mut cursor = txn.open_ro_cursor(database).unwrap();
+
+        let result: Vec<_> = cursor.iter_start().map(|i| i.unwrap()).collect();
+
+        assert_eq!(
+            result,
+            vec![
+                (b"hello".as_ref(), b"world".as_ref()),
+                (b"hello2", b"world2"),
+                (b"hello3", b"world3")
+            ]
+        );
+    }
+    #[test]
+    fn iter_backwards() {
+        let _guard1 = FileDropGuard::new("/tmp/rsnano-rev-cursor-test.ldb".as_ref());
+        let _guard2 = FileDropGuard::new("/tmp/rsnano-rev-cursor-test.ldb-lock".as_ref());
+        let env = create_real_lmdb_env("/tmp/rsnano-rev-cursor-test.ldb");
+        create_test_database(&env);
+        let database = env.open_db(Some("foo")).unwrap();
+        let txn = env.begin_read();
+        let cursor = txn.open_ro_cursor(database).unwrap();
+
+        assert_eq!(
+            cursor.get(None, None, MDB_LAST).unwrap(),
+            (Some(b"hello3".as_ref()), b"world3".as_ref())
+        );
+
+        assert_eq!(
+            cursor.get(None, None, MDB_PREV).unwrap(),
+            (Some(b"hello2".as_ref()), b"world2".as_ref())
+        );
+    }
 
     mod nullability {
         use super::*;
@@ -236,5 +280,49 @@ mod tests {
                 .build()
                 .build()
         }
+    }
+
+    fn create_test_database(env: &LmdbEnvironment) {
+        env.create_db(Some("foo"), DatabaseFlags::empty()).unwrap();
+        let database = env.open_db(Some("foo")).unwrap();
+        {
+            let mut txn = env.begin_write();
+            txn.put(database, b"hello", b"world", WriteFlags::empty())
+                .unwrap();
+            txn.put(database, b"hello2", b"world2", WriteFlags::empty())
+                .unwrap();
+            txn.put(database, b"hello3", b"world3", WriteFlags::empty())
+                .unwrap();
+            txn.commit();
+        }
+    }
+
+    struct FileDropGuard<'a> {
+        path: &'a Path,
+    }
+
+    impl<'a> FileDropGuard<'a> {
+        fn new(path: &'a Path) -> Self {
+            Self { path }
+        }
+    }
+
+    impl<'a> Drop for FileDropGuard<'a> {
+        fn drop(&mut self) {
+            if self.path.exists() {
+                let _ = std::fs::remove_file(self.path);
+            }
+        }
+    }
+
+    fn create_real_lmdb_env(path: impl Into<PathBuf>) -> LmdbEnvironment {
+        LmdbEnvironmentFactory::default()
+            .create(crate::EnvironmentOptions {
+                max_dbs: 1,
+                map_size: 1024 * 1024,
+                flags: EnvironmentFlags::NO_SUB_DIR | EnvironmentFlags::NO_TLS,
+                path: path.into(),
+            })
+            .unwrap()
     }
 }
