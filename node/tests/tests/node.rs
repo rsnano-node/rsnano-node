@@ -1,7 +1,10 @@
 use std::{
     cmp::max,
     collections::HashMap,
-    sync::{Arc, mpsc::TryRecvError},
+    sync::{
+        Arc,
+        mpsc::{self, TryRecvError},
+    },
     time::{Duration, Instant},
 };
 
@@ -12,9 +15,10 @@ use rsnano_ledger::{
 use rsnano_messages::{ConfirmAck, Message, Publish};
 use rsnano_network::{ChannelId, TrafficType};
 use rsnano_node::{
+    NodeEvent,
     block_processing::{BlockContext, BoundedBacklogConfig},
     config::{NodeConfig, NodeFlags},
-    consensus::{AecEvent, FilteredVote, ReceivedVote, election::VoteType},
+    consensus::{FilteredVote, ReceivedVote, election::VoteType},
 };
 use rsnano_nullable_tcp::get_available_port;
 use rsnano_types::{
@@ -24,7 +28,6 @@ use rsnano_types::{
 use rsnano_utils::{
     BackpressureHandler,
     stats::{DetailType, Direction, StatType},
-    sync::backpressure_channel,
 };
 use test_helpers::{
     System, activate_hashes, assert_never, assert_timely, assert_timely_eq, assert_timely_eq2,
@@ -94,7 +97,8 @@ fn rollback_gap_source() {
 fn vote_by_hash_bundle() {
     // Initialize the test system with one node
     let mut system = System::new();
-    let node = system.make_node();
+    let (tx, rx) = mpsc::sync_channel(128);
+    let node = system.build_node().event_sink(tx).finish();
     let wallet_id = node.wallets.wallet_ids()[0];
 
     // Prepare a vector to hold the blocks
@@ -124,10 +128,6 @@ fn vote_by_hash_bundle() {
 
     assert_timely_eq2(|| node.wallet_reps.lock().unwrap().voting_reps(), 1);
 
-    // Set up an observer to track the maximum number of hashes in a vote
-    let (tx, rx) = backpressure_channel::channel(128);
-    node.vote_processor.add_observer(tx);
-
     // Enqueue vote requests for all the blocks
     for block in &blocks {
         node.vote_generators
@@ -143,7 +143,7 @@ fn vote_by_hash_bundle() {
 
         match rx.try_recv() {
             Ok(e) => {
-                if let AecEvent::VoteProcessed(vote, _, _) = e {
+                if let NodeEvent::VoteProcessed(vote, _) = e {
                     max_hashes = max(max_hashes, vote.hashes.len());
 
                     if max_hashes >= 3 {
