@@ -30,6 +30,7 @@ pub struct OptimisticScheduler {
     aec_service: Arc<AecService>,
     ledger: Arc<Ledger>,
     confirming_set: Arc<ConfirmingSet>,
+    max_elections: usize,
     activation_delay: Duration,
     stats: OptimisticSchedulerStats,
 }
@@ -42,6 +43,7 @@ impl OptimisticScheduler {
         confirming_set: Arc<ConfirmingSet>,
     ) -> Self {
         Self {
+            max_elections: params.max_elections,
             activation_delay: params.activation_delay,
             logic: NullableCondvarMutex::new(OptimisticSchedulerLogic::new(params)),
             aec_service,
@@ -49,6 +51,10 @@ impl OptimisticScheduler {
             confirming_set,
             stats: Default::default(),
         }
+    }
+
+    pub fn max_elections(&self) -> usize {
+        self.max_elections
     }
 
     pub fn stop(&self) {
@@ -252,6 +258,7 @@ mod tests {
             aec_service,
             ledger,
             confirming_set: ConfirmingSet::new_null().into(),
+            max_elections: 10,
             stats: Default::default(),
             activation_delay: Duration::ZERO,
         }
