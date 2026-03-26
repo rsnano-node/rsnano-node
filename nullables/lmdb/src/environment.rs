@@ -1,7 +1,7 @@
 use std::{
     ffi::CString,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, atomic::AtomicBool},
+    sync::{Arc, Mutex},
 };
 
 use lmdb::{DatabaseFlags, EnvironmentFlags, Stat};
@@ -273,7 +273,6 @@ impl EnvironmentWrapper {
 
 struct EnvironmentStub {
     databases: Arc<Mutex<Vec<ConfiguredDatabase>>>,
-    write_active: Arc<AtomicBool>,
 }
 
 impl EnvironmentStub {
@@ -284,7 +283,6 @@ impl EnvironmentStub {
     fn new_with(databases: Vec<ConfiguredDatabase>) -> Self {
         Self {
             databases: Arc::new(Mutex::new(databases)),
-            write_active: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -293,28 +291,26 @@ impl EnvironmentStub {
     }
 
     fn begin_write(&self) -> WriteTransaction {
-        WriteTransaction::new_null(self.databases.clone(), self.write_active.clone())
+        WriteTransaction::new_null(self.databases.clone())
     }
 
     fn create_db(&self, name: Option<&str>, _flags: DatabaseFlags) -> lmdb::Result<LmdbDatabase> {
         let mut guard = self.databases.lock().unwrap();
-        let db_name = name.unwrap_or("");
-        if let Some(db) = guard.iter().find(|x| x.db_name == db_name) {
+        if let Some(db) = guard.iter().find(|x| name == Some(&x.db_name)) {
             return Ok(db.dbi);
         }
 
         let dbi = create_dbi(&guard);
-        guard.push(ConfiguredDatabase::new(dbi, db_name.to_owned()));
+        guard.push(ConfiguredDatabase::new(dbi, name.unwrap().to_owned()));
         Ok(dbi)
     }
 
     fn open_db(&self, name: Option<&str>) -> lmdb::Result<LmdbDatabase> {
-        let db_name = name.unwrap_or("");
         self.databases
             .lock()
             .unwrap()
             .iter()
-            .find(|x| x.db_name == db_name)
+            .find(|x| name == Some(&x.db_name))
             .map(|x| x.dbi)
             .ok_or(lmdb::Error::NotFound)
     }
@@ -385,6 +381,37 @@ mod tests {
     }
 
     #[test]
+    fn open_unknown_database_fails() {
+        let path = TempLmdbFile::new();
+        let env = create_lmdb_env(path);
+        let result = env.open_db(Some("UNKNOWN"));
+        assert_eq!(result, Err(lmdb::Error::NotFound));
+    }
+
+    #[test]
+    fn create_db() {
+        let path = TempLmdbFile::new();
+        let env = create_lmdb_env(path);
+        env.create_db(Some("mydb"), DatabaseFlags::empty()).unwrap();
+        let result = env.open_db(Some("mydb"));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn write_key_value() {
+        let path = TempLmdbFile::new();
+        let env = create_lmdb_env(path);
+        let dbi = env.create_db(Some("mydb"), DatabaseFlags::empty()).unwrap();
+        {
+            let mut txn = env.begin_write();
+            txn.put(dbi, &[1, 2], &[3, 4], WriteFlags::empty()).unwrap();
+            txn.commit();
+        }
+        let txn = env.begin_read();
+        let result = txn.get(dbi, &[1, 2]).unwrap();
+        assert_eq!(result, [3, 4]);
+    }
+    #[test]
     fn can_track_puts() {
         let env = LmdbEnvironment::new_null();
 
@@ -440,14 +467,6 @@ mod tests {
             let env = LmdbEnvironment::new_null();
             env.create_db(Some("mydb"), DatabaseFlags::empty()).unwrap();
             let result = env.open_db(Some("mydb"));
-            assert!(result.is_ok());
-        }
-
-        #[test]
-        fn create_unnamed_db() {
-            let env = LmdbEnvironment::new_null();
-            env.create_db(None, DatabaseFlags::empty()).unwrap();
-            let result = env.open_db(None);
             assert!(result.is_ok());
         }
 

@@ -216,14 +216,9 @@ impl Wallets {
     }
 
     pub fn wallet_ids(&self) -> Vec<WalletId> {
-        let mut ids = self
-            .wallets
-            .lock()
-            .unwrap()
-            .keys()
-            .copied()
-            .collect::<Vec<_>>();
-        ids.sort_unstable();
+        let txn = self.env.begin_read();
+        let ids = self.get_wallet_ids_with_tx(&txn);
+        txn.commit();
         ids
     }
 
@@ -458,8 +453,6 @@ impl Wallets {
         let mut guard = self.wallets.lock().unwrap();
         let mut txn = self.env.begin_write();
         let wallet = guard.remove(id).unwrap();
-        txn.delete(self.db.unwrap(), id.encode_hex().as_bytes(), None)
-            .unwrap();
         wallet.store.destroy(&mut txn);
         txn.commit();
     }
@@ -1322,15 +1315,6 @@ impl Wallets {
             };
             Arc::new(wallet)
         };
-        let mut txn = self.env.begin_write();
-        txn.put(
-            self.db.unwrap(),
-            wallet_id.encode_hex().as_bytes(),
-            &[],
-            WriteFlags::empty(),
-        )
-        .unwrap();
-        txn.commit();
         guard.insert(wallet_id, Arc::clone(&wallet));
         self.enter_initial_password(&wallet);
     }
@@ -1675,30 +1659,6 @@ mod tests {
             .expect_err("Should fail, because there is no work queue");
     }
 
-    #[test]
-    fn wallet_ids_include_created_wallets() {
-        let fixture = Fixture::new(Default::default());
-        let wallets = &fixture.wallets;
-        let wallet_id = WalletId::from(1);
-
-        wallets.create(wallet_id);
-
-        assert_eq!(wallets.wallet_ids(), vec![wallet_id]);
-    }
-
-    #[test]
-    fn reload_keeps_created_wallets() {
-        let fixture = Fixture::new(Default::default());
-        let wallets = &fixture.wallets;
-        let wallet_id = WalletId::from(1);
-
-        wallets.create(wallet_id);
-        wallets.reload();
-
-        assert_eq!(wallets.wallet_ids(), vec![wallet_id]);
-        assert!(wallets.wallet_exists(&wallet_id));
-    }
-
     fn ledger_with_pending_receive(
         receiver_account: impl Into<Account>,
     ) -> (Ledger, BlockHash, Amount) {
@@ -1740,9 +1700,7 @@ mod tests {
             let ledger = Arc::new(args.ledger.unwrap_or_else(|| Ledger::new_null()));
             let clock = Arc::new(SteadyClock::new_null());
 
-            let mut wallets = Wallets::new(wallets_config, env, ledger, work, clock);
-            wallets.initialize().unwrap();
-            let wallets = Arc::new(wallets);
+            let wallets = Arc::new(Wallets::new(wallets_config, env, ledger, work, clock));
 
             let (tx_work, rx_work) = mpsc::channel();
             if !args.disable_work_queue {

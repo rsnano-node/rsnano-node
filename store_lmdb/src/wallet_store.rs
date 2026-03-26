@@ -471,7 +471,7 @@ impl LmdbWalletStore {
     }
 
     pub fn exists(&self, txn: &dyn Transaction, key: &PublicKey) -> bool {
-        self.is_open() && self.valid_public_key(key) && self.find(txn, key).is_some()
+        self.valid_public_key(key) && self.find(txn, key).is_some()
     }
 
     pub fn deterministic_insert(&self, txn: &mut WriteTransaction) -> PublicKey {
@@ -701,9 +701,6 @@ impl LmdbWalletStore {
     }
 
     pub fn work_put(&self, txn: &mut WriteTransaction, pub_key: &PublicKey, work: WorkNonce) {
-        if !self.is_open() {
-            return;
-        }
         let mut entry = self.entry_get_raw(txn, pub_key);
         debug_assert!(!entry.key.is_zero());
         entry.work = work;
@@ -714,6 +711,7 @@ impl LmdbWalletStore {
         unsafe {
             txn.drop_db(self.db_handle()).unwrap();
         }
+        *self.db_handle.lock().unwrap() = None;
     }
 
     pub fn is_open(&self) -> bool {
