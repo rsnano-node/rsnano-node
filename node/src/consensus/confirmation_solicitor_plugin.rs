@@ -4,7 +4,7 @@ use std::{
 };
 
 use super::{
-    AecService, AecTickerPlugin, ConfirmationSolicitor, confirm_req_sender::ConfirmReqSender,
+    AecTickerPlugin, AecTickerRead, ConfirmationSolicitor, confirm_req_sender::ConfirmReqSender,
     election::ElectionState, winner_block_broadcaster::WinnerBlockBroadcaster,
 };
 use crate::{representatives::OnlineReps, transport::MessageFlooder};
@@ -29,7 +29,7 @@ impl ConfirmationSolicitorPlugin {
 }
 
 impl AecTickerPlugin for ConfirmationSolicitorPlugin {
-    fn run(&mut self, aec: &AecService) {
+    fn run(&mut self, aec: &dyn AecTickerRead) {
         let peered_prs = self.online_reps.lock().unwrap().peered_principal_reps();
 
         // TODO don't clone flooder!'
@@ -45,20 +45,15 @@ impl AecTickerPlugin for ConfirmationSolicitorPlugin {
          * Elections extending the soft config.size limit are flushed after a certain time-to-live cutoff
          * Flushed elections are later re-activated via frontier confirmation
          */
-        let elections: Vec<_> = aec
-            .elections_round_robin()
-            .into_iter()
-            .filter(|e| e.state() == ElectionState::Active)
-            .collect();
-
-        for election in &elections {
+        aec.for_each_confirmation_solicitation_election(&mut |election| {
+            debug_assert_eq!(election.state(), ElectionState::Active);
             self.winner_block_broadcaster
                 .lock()
                 .unwrap()
                 .try_broadcast_winner(&election.winner().clone(), election.votes());
             self.confirm_req_sender
                 .send_confirm_req(&mut solicitor, election);
-        }
+        });
 
         solicitor.flush();
     }

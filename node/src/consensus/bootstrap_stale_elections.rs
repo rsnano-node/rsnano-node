@@ -11,7 +11,7 @@ use rsnano_nullable_clock::SteadyClock;
 use rsnano_types::Account;
 use rsnano_utils::stats::{StatsCollection, StatsSource};
 
-use super::{AecService, AecTickerPlugin, election::Election};
+use super::{AecTickerPlugin, AecTickerRead};
 use crate::bootstrap::Bootstrapper;
 
 /// If an election isn't confirmed within "stale_threshold", then try to bootstrap
@@ -59,19 +59,15 @@ impl BootstrapStaleElections {
 }
 
 impl AecTickerPlugin for BootstrapStaleElections {
-    fn run(&mut self, aec: &AecService) {
+    fn run(&mut self, aec: &dyn AecTickerRead) {
         let now = self.clock.now();
 
-        let is_stale = |election: &&Election| election.start().elapsed(now) >= self.stale_threshold;
-
         self.stale_accounts.clear();
-        self.stale_accounts.extend(
-            aec.elections_round_robin()
-                .iter()
-                .filter(is_stale)
-                .map(|e| e.account())
-                .take(128),
-        );
+        aec.for_each_stale_election(now, self.stale_threshold, &mut |election| {
+            if self.stale_accounts.len() < 128 {
+                self.stale_accounts.push(election.account());
+            }
+        });
 
         self.bootstrap_stale_accounts();
     }
@@ -99,7 +95,7 @@ impl StatsSource for StaleElectionsStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::consensus::AecInsertRequest;
+    use crate::consensus::{AecInsertRequest, AecService};
     use rsnano_types::{BlockPriority, SavedBlock};
 
     #[test]
