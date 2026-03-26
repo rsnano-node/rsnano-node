@@ -81,6 +81,7 @@ impl ElectionSchedulers {
         let optimistic = Arc::new(OptimisticScheduler::new(
             optimistic_params,
             aec_service.clone(),
+            clock.clone(),
             ledger.clone(),
             confirming_set.clone(),
         ));

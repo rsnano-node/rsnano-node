@@ -4,6 +4,7 @@ use std::{
 };
 
 use rsnano_ledger::{AnySet, Ledger, LedgerSet, OwningAnySet};
+use rsnano_nullable_clock::SteadyClock;
 use rsnano_nullable_condvar::NullableCondvarMutex;
 use rsnano_types::Account;
 use rsnano_utils::{
@@ -13,7 +14,7 @@ use rsnano_utils::{
 
 use crate::{
     cementation::ConfirmingSet,
-    consensus::{AecService, election::ElectionBehavior},
+    consensus::{AecInsertRequest, AecService, election::ElectionBehavior},
 };
 
 mod candidate_queue;
@@ -30,6 +31,7 @@ pub struct OptimisticScheduler {
     aec_service: Arc<AecService>,
     ledger: Arc<Ledger>,
     confirming_set: Arc<ConfirmingSet>,
+    clock: Arc<SteadyClock>,
     max_elections: usize,
     activation_delay: Duration,
     stats: OptimisticSchedulerStats,
@@ -39,6 +41,7 @@ impl OptimisticScheduler {
     pub(crate) fn new(
         params: OptimisticSchedulerParams,
         aec_service: Arc<AecService>,
+        clock: Arc<SteadyClock>,
         ledger: Arc<Ledger>,
         confirming_set: Arc<ConfirmingSet>,
     ) -> Self {
@@ -49,6 +52,7 @@ impl OptimisticScheduler {
             aec_service,
             ledger,
             confirming_set,
+            clock,
             stats: Default::default(),
         }
     }
@@ -69,7 +73,7 @@ impl OptimisticScheduler {
 
     /// Called from backlog population to process accounts with unconfirmed blocks
     pub fn activate(&self, account: &Account, block_count: u64, confirmation_height: u64) -> bool {
-        let now = self.aec_service.now();
+        let now = self.clock.now();
         let mut logic = self.logic.lock();
         let activated = logic.try_activate(account, block_count, confirmation_height, now);
         if activated {
@@ -134,7 +138,10 @@ impl OptimisticScheduler {
         // Try to insert it into AEC
         // We check for AEC vacancy inside our predicate
         let priority = any.block_priority(&block);
-        let inserted = self.aec_service.insert_optimistic(block, priority);
+        let inserted = self
+            .aec_service
+            .insert(AecInsertRequest::new_optimistic(block, priority))
+            .is_ok();
 
         if inserted {
             self.stats.insert_count.fetch_add(1, Relaxed);
@@ -148,7 +155,7 @@ impl OptimisticScheduler {
             self.aec_service
                 .count_by_behavior(ElectionBehavior::Optimistic),
             self.aec_service.vacancy(),
-            self.aec_service.now(),
+            self.clock.now(),
         )
     }
 
@@ -243,6 +250,7 @@ mod tests {
         OptimisticScheduler::new(
             test_params(),
             Arc::new(AecService::new_null()),
+            SteadyClock::new_null().into(),
             Ledger::new_null().into(),
             ConfirmingSet::new_null().into(),
         )
@@ -258,6 +266,7 @@ mod tests {
             aec_service,
             ledger,
             confirming_set: ConfirmingSet::new_null().into(),
+            clock: SteadyClock::new_null().into(),
             max_elections: 10,
             stats: Default::default(),
             activation_delay: Duration::ZERO,

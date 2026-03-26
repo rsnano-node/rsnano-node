@@ -231,48 +231,14 @@ impl AecService {
             .remove_votes(root, voters.iter());
     }
 
-    pub(crate) fn activate_manual(&self, block: SavedBlock, priority: BlockPriority) -> bool {
-        let hash = block.hash();
-        let mut active = self.active.write().unwrap();
-        if let Ok(facts) = active.insert(
-            AecInsertRequest::new_manual(block, priority),
-            self.clock.now(),
-        ) {
-            active.transition_active(&hash);
-            drop(active);
-            self.publish_facts(facts);
-            true
-        } else {
-            false
-        }
-    }
-
-    pub(crate) fn insert_hinted(&self, block: SavedBlock, priority: BlockPriority) -> bool {
-        let result = self.active.write().unwrap().insert(
-            AecInsertRequest::new_hinted(block, priority),
-            self.clock.now(),
-        );
-        match result {
-            Ok(facts) => {
-                self.publish_facts(facts);
-                true
-            }
-            Err(_) => false,
-        }
-    }
-
-    pub(crate) fn insert_optimistic(&self, block: SavedBlock, priority: BlockPriority) -> bool {
-        let result = self.active.write().unwrap().insert(
-            AecInsertRequest::new_optimistic(block, priority),
-            self.clock.now(),
-        );
-        match result {
-            Ok(facts) => {
-                self.publish_facts(facts);
-                true
-            }
-            Err(_) => false,
-        }
+    pub(crate) fn insert(&self, request: AecInsertRequest) -> Result<(), AecInsertError> {
+        let facts = self
+            .active
+            .write()
+            .unwrap()
+            .insert(request, self.clock.now())?;
+        self.publish_facts(facts);
+        Ok(())
     }
 
     pub fn insert_priority(
@@ -280,12 +246,7 @@ impl AecService {
         block: SavedBlock,
         priority: BlockPriority,
     ) -> Result<(), AecInsertError> {
-        let facts = self.active.write().unwrap().insert(
-            AecInsertRequest::new_priority(block, priority),
-            self.clock.now(),
-        )?;
-        self.publish_facts(facts);
-        Ok(())
+        self.insert(AecInsertRequest::new_priority(block, priority))
     }
 
     pub(crate) fn bucket_len(&self, bucket: usize) -> usize {
