@@ -58,6 +58,76 @@ pub enum AecEvent {
     Recovered,
 }
 
+pub(crate) enum AecFact {
+    ElectionStarted(BlockHash, QualifiedRoot),
+    ElectionConfirmed(ConfirmedElection),
+    ElectionEnded(Election),
+    BlockAddedToElection(BlockHash),
+    BlockDiscarded(Block),
+    BlockConfirmed(SavedBlock, ConfirmedElection),
+    WinnerChanged(BlockHash, Block),
+    Recovered,
+}
+
+impl From<AecFact> for AecEvent {
+    fn from(value: AecFact) -> Self {
+        match value {
+            AecFact::ElectionStarted(hash, root) => Self::ElectionStarted(hash, root),
+            AecFact::ElectionConfirmed(election) => Self::ElectionConfirmed(election),
+            AecFact::ElectionEnded(election) => Self::ElectionEnded(election),
+            AecFact::BlockAddedToElection(hash) => Self::BlockAddedToElection(hash),
+            AecFact::BlockDiscarded(block) => Self::BlockDiscarded(block),
+            AecFact::BlockConfirmed(block, election) => Self::BlockConfirmed(block, election),
+            AecFact::WinnerChanged(old_winner, new_winner) => {
+                Self::WinnerChanged(old_winner, new_winner)
+            }
+            AecFact::Recovered => Self::Recovered,
+        }
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct AecFacts(Vec<AecFact>);
+
+impl AecFacts {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn push(&mut self, fact: AecFact) {
+        self.0.push(fact);
+    }
+
+    pub fn extend(&mut self, facts: Self) {
+        self.0.extend(facts.0);
+    }
+
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[cfg(test)]
+    pub fn as_slice(&self) -> &[AecFact] {
+        &self.0
+    }
+}
+
+impl From<AecFact> for AecFacts {
+    fn from(value: AecFact) -> Self {
+        Self(vec![value])
+    }
+}
+
+impl IntoIterator for AecFacts {
+    type Item = AecFact;
+    type IntoIter = std::vec::IntoIter<AecFact>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum AecInsertError {
     Stopped,
