@@ -122,6 +122,7 @@ impl AecService {
         self.active.read().unwrap().max_len()
     }
 
+    // Shared AEC query surface used by production callers and tests.
     pub fn vacancy(&self) -> i64 {
         self.active.read().unwrap().vacancy()
     }
@@ -144,10 +145,6 @@ impl AecService {
             .iter_round_robin()
             .cloned()
             .collect()
-    }
-
-    pub fn now(&self) -> Timestamp {
-        self.clock.now()
     }
 
     pub fn count_by_behavior(&self, behavior: ElectionBehavior) -> usize {
@@ -189,6 +186,8 @@ impl AecService {
             .remove_recently_confirmed(block_hash);
     }
 
+    // Shared AEC mutation surface. Caller-specific helpers below are temporary and
+    // are removed unit by unit as the boundary is narrowed.
     pub(crate) fn confirm_dependent_elections(
         &self,
         confirmed: Vec<(SavedBlock, Option<ConfirmedElection>)>,

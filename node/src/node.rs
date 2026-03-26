@@ -672,6 +672,7 @@ impl Node {
         let election_schedulers = Arc::new(ElectionSchedulers::new(
             config.clone(),
             aec_service.clone(),
+            steady_clock.clone(),
             ledger.clone(),
             stats.clone(),
             vote_cache.clone(),
@@ -1202,6 +1203,7 @@ impl Node {
 
         let aec_voter = AecVoter::new(
             aec_service.clone(),
+            steady_clock.clone(),
             vote_generators.clone(),
             current_network,
             cps_limiter,
