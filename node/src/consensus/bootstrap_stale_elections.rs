@@ -123,14 +123,11 @@ mod tests {
         let prio = BlockPriority::new_test_instance();
         let account = block.account();
         let aec = AecService::new_null();
-        aec.legacy_container()
-            .write()
-            .unwrap()
-            .insert(
-                AecInsertRequest::new_priority(block, prio),
-                clock.now() - BootstrapStaleElections::DEFAULT_STALE_THRESHOLD,
-            )
-            .unwrap();
+        aec.insert_for_test(
+            AecInsertRequest::new_priority(block, prio),
+            clock.now() - BootstrapStaleElections::DEFAULT_STALE_THRESHOLD,
+        )
+        .unwrap();
 
         let mut plugin = BootstrapStaleElections::new(bootstrapper.clone(), clock);
         plugin.run(&aec);

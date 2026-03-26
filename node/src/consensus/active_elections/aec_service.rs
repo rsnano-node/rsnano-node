@@ -437,10 +437,15 @@ impl AecService {
         }
     }
 
-    /// Temporary compatibility bridge for collaborators that have not yet migrated to AecService.
     #[cfg(test)]
-    pub(crate) fn legacy_container(&self) -> Arc<RwLock<ActiveElectionsContainer>> {
-        Arc::clone(&self.active)
+    pub(crate) fn insert_for_test(
+        &self,
+        request: AecInsertRequest,
+        now: Timestamp,
+    ) -> Result<(), AecInsertError> {
+        let facts = self.active.write().unwrap().insert(request, now)?;
+        self.publish_facts(facts);
+        Ok(())
     }
 }
 
@@ -524,10 +529,7 @@ mod tests {
 
         service.rep_weights.put(rep_key.public_key(), Amount::MAX);
         service
-            .legacy_container()
-            .write()
-            .unwrap()
-            .insert(
+            .insert_for_test(
                 AecInsertRequest::new_priority(block, BlockPriority::new_test_instance()),
                 service.clock.now(),
             )
