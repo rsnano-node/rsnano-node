@@ -5,14 +5,15 @@ use std::{
 };
 
 use rsnano_ledger::RepWeightCache;
-use rsnano_nullable_clock::SteadyClock;
-use rsnano_types::{Amount, BlockHash, QualifiedRoot, VoteError};
+use rsnano_nullable_clock::{SteadyClock, Timestamp};
+use rsnano_types::{Amount, BlockHash, BlockPriority, QualifiedRoot, SavedBlock, VoteError};
 use rsnano_utils::sync::backpressure_channel::{self, Receiver, Sender};
 
 use crate::{
     consensus::{
         ActiveElectionsConfig, ActiveElectionsContainer, AecCooldownReason, AecEvent,
-        ApplyVoteArgs, FilteredVote, ReceivedVote,
+        AecInsertError, AecInsertRequest, election::ElectionBehavior, ApplyVoteArgs, FilteredVote,
+        ReceivedVote,
     },
     representatives::OnlineReps,
     utils::{BackpressureEventProcessor, spawn_backpressure_processor},
@@ -98,11 +99,95 @@ impl AecService {
         self.active.write().unwrap().erase(root)
     }
 
+    pub(crate) fn max_len(&self) -> usize {
+        self.active.read().unwrap().max_len()
+    }
+
+    pub(crate) fn vacancy(&self) -> i64 {
+        self.active.read().unwrap().vacancy()
+    }
+
+    pub(crate) fn now(&self) -> Timestamp {
+        self.clock.now()
+    }
+
+    pub(crate) fn count_by_behavior(&self, behavior: ElectionBehavior) -> usize {
+        self.active.read().unwrap().count_by_behavior(behavior)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn is_active_hash(&self, hash: &BlockHash) -> bool {
+        self.active.read().unwrap().is_active_hash(hash)
+    }
+
     pub(crate) fn remove_recently_confirmed(&self, block_hash: &BlockHash) {
         self.active
             .write()
             .unwrap()
             .remove_recently_confirmed(block_hash);
+    }
+
+    pub(crate) fn activate_manual(&self, block: SavedBlock, priority: BlockPriority) -> bool {
+        let hash = block.hash();
+        let mut active = self.active.write().unwrap();
+        if active
+            .insert(AecInsertRequest::new_manual(block, priority), self.clock.now())
+            .is_ok()
+        {
+            active.transition_active(&hash);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(crate) fn insert_hinted(&self, block: SavedBlock, priority: BlockPriority) -> bool {
+        self.active
+            .write()
+            .unwrap()
+            .insert(AecInsertRequest::new_hinted(block, priority), self.clock.now())
+            .is_ok()
+    }
+
+    pub(crate) fn insert_optimistic(&self, block: SavedBlock, priority: BlockPriority) -> bool {
+        self.active
+            .write()
+            .unwrap()
+            .insert(
+                AecInsertRequest::new_optimistic(block, priority),
+                self.clock.now(),
+            )
+            .is_ok()
+    }
+
+    pub(crate) fn insert_priority(
+        &self,
+        block: SavedBlock,
+        priority: BlockPriority,
+    ) -> Result<(), AecInsertError> {
+        self.active
+            .write()
+            .unwrap()
+            .insert(AecInsertRequest::new_priority(block, priority), self.clock.now())
+    }
+
+    pub(crate) fn bucket_len(&self, bucket: usize) -> usize {
+        self.active.read().unwrap().bucket_len(bucket)
+    }
+
+    pub(crate) fn lowest_priority(
+        &self,
+        bucket: usize,
+    ) -> Option<(QualifiedRoot, rsnano_types::TimePriority)> {
+        self.active.read().unwrap().lowest_priority(bucket)
+    }
+
+    pub(crate) fn find_bucket(&self, root: &QualifiedRoot) -> Option<usize> {
+        self.active.read().unwrap().find_bucket(root)
+    }
+
+    pub(crate) fn erase_lowest_prio_election(&self, bucket: usize) {
+        self.active.write().unwrap().erase_lowest_prio_election(bucket);
     }
 
     pub(crate) fn apply_vote(

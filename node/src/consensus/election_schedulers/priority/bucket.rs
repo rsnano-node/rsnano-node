@@ -1,13 +1,92 @@
 use std::sync::atomic::Ordering;
 
 use rsnano_nullable_clock::Timestamp;
-use rsnano_types::{BlockHash, BlockPriority, SavedBlock};
+use rsnano_types::{BlockHash, BlockPriority, QualifiedRoot, SavedBlock, TimePriority};
 
 use super::{
     bucket_stats::BucketStats,
     ordered_blocks::{BlockEntry, OrderedBlocks},
 };
-use crate::consensus::{ActiveElectionsContainer, AecInsertError, AecInsertRequest};
+use crate::consensus::{ActiveElectionsContainer, AecInsertError, AecService};
+
+pub(crate) trait PriorityAecAccess {
+    fn bucket_len(&self, bucket_id: usize) -> usize;
+    fn lowest_priority(
+        &self,
+        bucket_id: usize,
+    ) -> Option<(QualifiedRoot, TimePriority)>;
+    fn vacancy(&self) -> i64;
+    fn find_bucket(&self, root: &QualifiedRoot) -> Option<usize>;
+    fn erase_lowest_prio_election(&self, bucket_id: usize);
+    fn insert_priority(
+        &self,
+        block: SavedBlock,
+        priority: BlockPriority,
+        now: Timestamp,
+    ) -> Result<(), AecInsertError>;
+}
+
+impl PriorityAecAccess for ActiveElectionsContainer {
+    fn bucket_len(&self, bucket_id: usize) -> usize {
+        self.bucket_len(bucket_id)
+    }
+
+    fn lowest_priority(&self, bucket_id: usize) -> Option<(QualifiedRoot, TimePriority)> {
+        self.lowest_priority(bucket_id)
+    }
+
+    fn vacancy(&self) -> i64 {
+        self.vacancy()
+    }
+
+    fn find_bucket(&self, root: &QualifiedRoot) -> Option<usize> {
+        self.find_bucket(root)
+    }
+
+    fn erase_lowest_prio_election(&self, _bucket_id: usize) {
+        unreachable!("mutation requires mutable access")
+    }
+
+    fn insert_priority(
+        &self,
+        _block: SavedBlock,
+        _priority: BlockPriority,
+        _now: Timestamp,
+    ) -> Result<(), AecInsertError> {
+        unreachable!("mutation requires mutable access")
+    }
+}
+
+impl PriorityAecAccess for AecService {
+    fn bucket_len(&self, bucket_id: usize) -> usize {
+        self.bucket_len(bucket_id)
+    }
+
+    fn lowest_priority(&self, bucket_id: usize) -> Option<(QualifiedRoot, TimePriority)> {
+        self.lowest_priority(bucket_id)
+    }
+
+    fn vacancy(&self) -> i64 {
+        self.vacancy()
+    }
+
+    fn find_bucket(&self, root: &QualifiedRoot) -> Option<usize> {
+        self.find_bucket(root)
+    }
+
+    fn erase_lowest_prio_election(&self, bucket_id: usize) {
+        self.erase_lowest_prio_election(bucket_id)
+    }
+
+    fn insert_priority(
+        &self,
+        block: SavedBlock,
+        priority: BlockPriority,
+        _now: Timestamp,
+    ) -> Result<(), AecInsertError> {
+        self.insert_priority(block, priority)
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PriorityBucketConfig {
@@ -86,7 +165,7 @@ impl Bucket {
         }
     }
 
-    pub fn available(&self, aec: &ActiveElectionsContainer) -> bool {
+    pub(crate) fn available(&self, aec: &impl PriorityAecAccess) -> bool {
         let Some(highest_block) = self.block_queue.highest_prio() else {
             // No blocks enqueued
             return false;
@@ -111,9 +190,9 @@ impl Bucket {
         aec.vacancy() > 0 // cooldown check. TODO: check for cooldown explicitly
     }
 
-    pub fn activate(
+    pub(crate) fn activate(
         &mut self,
-        aec: &mut ActiveElectionsContainer,
+        aec: &impl PriorityAecAccess,
         now: Timestamp,
         stats: &BucketStats,
     ) {
@@ -142,7 +221,7 @@ impl Bucket {
             stats.replaced.fetch_add(1, Ordering::Relaxed);
         }
 
-        match aec.insert(AecInsertRequest::new_priority(block, priority), now) {
+        match aec.insert_priority(block, priority, now) {
             Ok(_) => {
                 stats.activate_success.fetch_add(1, Ordering::Relaxed);
             }

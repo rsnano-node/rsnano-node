@@ -10,12 +10,11 @@ pub use manual_scheduler::*;
 pub use optimistic::*;
 
 use std::{
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, Mutex},
     thread::JoinHandle,
 };
 
 use rsnano_ledger::{AnySet, Ledger, ProcessResult};
-use rsnano_nullable_clock::SteadyClock;
 use rsnano_output_tracker::{OutputListenerMt, OutputTrackerMt};
 use rsnano_types::{Account, AccountInfo, BlockHash, ConfirmationHeightInfo, SavedBlock};
 use rsnano_utils::{
@@ -23,8 +22,12 @@ use rsnano_utils::{
     stats::{Stats, StatsCollection, StatsSource},
 };
 
-use super::{ActiveElectionsContainer, VoteCache};
-use crate::{cementation::ConfirmingSet, config::NodeConfig, representatives::OnlineReps};
+use super::{AecService, VoteCache};
+use crate::{
+    cementation::ConfirmingSet,
+    config::NodeConfig,
+    representatives::OnlineReps,
+};
 use priority::{PriorityScheduler, PrioritySchedulerExt};
 
 pub struct ElectionSchedulers {
@@ -40,31 +43,28 @@ pub struct ElectionSchedulers {
 }
 
 impl ElectionSchedulers {
-    pub fn new(
+    pub(crate) fn new(
         config: NodeConfig,
-        active_elections: Arc<RwLock<ActiveElectionsContainer>>,
+        aec_service: Arc<AecService>,
         ledger: Arc<Ledger>,
         stats: Arc<Stats>,
         vote_cache: Arc<Mutex<VoteCache>>,
         confirming_set: Arc<ConfirmingSet>,
         online_reps: Arc<Mutex<OnlineReps>>,
-        clock: Arc<SteadyClock>,
     ) -> Self {
         let hinted = Arc::new(HintedScheduler::new(
             config.hinted_scheduler.clone(),
-            active_elections.clone(),
+            aec_service.clone(),
             ledger.clone(),
             stats.clone(),
             vote_cache.clone(),
             confirming_set.clone(),
             online_reps.clone(),
-            clock.clone(),
         ));
 
         let manual = Arc::new(ManualScheduler::new(
             stats.clone(),
-            active_elections.clone(),
-            clock.clone(),
+            aec_service.clone(),
             ledger.clone(),
         ));
 
@@ -78,17 +78,15 @@ impl ElectionSchedulers {
         };
         let optimistic = Arc::new(OptimisticScheduler::new(
             optimistic_params,
-            active_elections.clone(),
+            aec_service.clone(),
             ledger.clone(),
             confirming_set.clone(),
-            clock.clone(),
         ));
 
         let priority = Arc::new(PriorityScheduler::new(
             config.priority_bucket.clone(),
             stats.clone(),
-            active_elections.clone(),
-            clock,
+            aec_service,
         ));
 
         Self {
@@ -106,7 +104,6 @@ impl ElectionSchedulers {
 
     pub fn new_null() -> Self {
         let config = NodeConfig::new_test_instance();
-        let active_elections = Arc::new(RwLock::new(ActiveElectionsContainer::default()));
         let ledger = Arc::new(Ledger::new_null());
         let stats = Arc::new(Stats::default());
         let vote_cache = Arc::new(Mutex::new(VoteCache::new(
@@ -115,17 +112,16 @@ impl ElectionSchedulers {
         )));
         let confirming_set = Arc::new(ConfirmingSet::new_null());
         let online_reps = Arc::new(Mutex::new(OnlineReps::new_test_instance()));
-        let clock = Arc::new(SteadyClock::new_null());
+        let aec_service = Arc::new(AecService::new_null());
 
         Self::new(
             config,
-            active_elections,
+            aec_service,
             ledger,
             stats,
             vote_cache,
             confirming_set,
             online_reps,
-            clock,
         )
     }
 

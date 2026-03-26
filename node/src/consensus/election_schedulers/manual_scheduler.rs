@@ -1,43 +1,39 @@
 use std::{
     collections::VecDeque,
     mem::size_of,
-    sync::{Arc, Condvar, Mutex, RwLock},
+    sync::{Arc, Condvar, Mutex},
     thread::JoinHandle,
 };
 
 use rsnano_ledger::{AnySet, Ledger};
-use rsnano_nullable_clock::SteadyClock;
 use rsnano_types::{Amount, Block, BlockHash, SavedBlock};
 use rsnano_utils::{
     container_info::ContainerInfo,
     stats::{DetailType, StatType, Stats},
 };
 
-use crate::consensus::{ActiveElectionsContainer, AecInsertRequest, election::ElectionBehavior};
+use crate::consensus::{AecService, election::ElectionBehavior};
 
 pub struct ManualScheduler {
     thread: Mutex<Option<JoinHandle<()>>>,
     condition: Condvar,
     mutex: Mutex<ManualSchedulerImpl>,
     stats: Arc<Stats>,
-    active_elections: Arc<RwLock<ActiveElectionsContainer>>,
-    clock: Arc<SteadyClock>,
+    aec_service: Arc<AecService>,
     ledger: Arc<Ledger>,
 }
 
 impl ManualScheduler {
-    pub fn new(
+    pub(crate) fn new(
         stats: Arc<Stats>,
-        active_elections: Arc<RwLock<ActiveElectionsContainer>>,
-        clock: Arc<SteadyClock>,
+        aec_service: Arc<AecService>,
         ledger: Arc<Ledger>,
     ) -> Self {
         Self {
             thread: Mutex::new(None),
             condition: Condvar::new(),
             stats,
-            active_elections,
-            clock,
+            aec_service,
             ledger,
             mutex: Mutex::new(ManualSchedulerImpl {
                 queue: Default::default(),
@@ -92,20 +88,11 @@ impl ManualScheduler {
                     let block = guard.queue.pop_front().unwrap();
                     drop(guard);
 
-                    let hash = block.hash();
                     let priority = self.ledger.any().block_priority(&block);
                     self.stats
                         .inc(StatType::ElectionScheduler, DetailType::InsertManual);
 
-                    let now = self.clock.now();
-
-                    let mut aec = self.active_elections.write().unwrap();
-                    if aec
-                        .insert(AecInsertRequest::new_manual(block, priority), now)
-                        .is_ok()
-                    {
-                        aec.transition_active(&hash);
-                    }
+                    self.aec_service.activate_manual(block, priority);
                 } else {
                     drop(guard);
                 }

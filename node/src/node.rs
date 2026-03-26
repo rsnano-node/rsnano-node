@@ -674,13 +674,12 @@ impl Node {
 
         let election_schedulers = Arc::new(ElectionSchedulers::new(
             config.clone(),
-            active_elections.clone(),
+            aec_service.clone(),
             ledger.clone(),
             stats.clone(),
             vote_cache.clone(),
             confirming_set.clone(),
             online_reps.clone(),
-            steady_clock.clone(),
         ));
         ledger_event_handlers.add_mut(ElectionSchedulersPlugin::new(election_schedulers.clone()));
 

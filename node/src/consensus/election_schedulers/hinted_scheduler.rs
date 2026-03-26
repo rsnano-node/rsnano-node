@@ -3,7 +3,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     mem::size_of,
     sync::{
-        Arc, Condvar, Mutex, RwLock,
+        Arc, Condvar, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     thread::JoinHandle,
@@ -11,7 +11,6 @@ use std::{
 };
 
 use rsnano_ledger::{AnySet, Ledger, LedgerSet};
-use rsnano_nullable_clock::SteadyClock;
 use rsnano_types::{Amount, BlockHash};
 use rsnano_utils::{
     container_info::ContainerInfo,
@@ -21,7 +20,7 @@ use rsnano_utils::{
 use super::VoteCache;
 use crate::{
     cementation::ConfirmingSet,
-    consensus::{ActiveElectionsContainer, AecInsertRequest, election::ElectionBehavior},
+    consensus::{AecService, election::ElectionBehavior},
     representatives::OnlineReps,
 };
 
@@ -61,14 +60,13 @@ impl Default for HintedSchedulerConfig {
 pub struct HintedScheduler {
     thread: Mutex<Option<JoinHandle<()>>>,
     config: HintedSchedulerConfig,
-    active_elections: Arc<RwLock<ActiveElectionsContainer>>,
+    aec_service: Arc<AecService>,
     condition: Condvar,
     ledger: Arc<Ledger>,
     confirming_set: Arc<ConfirmingSet>,
     stats: Arc<Stats>,
     vote_cache: Arc<Mutex<VoteCache>>,
     online_reps: Arc<Mutex<OnlineReps>>,
-    clock: Arc<SteadyClock>,
     stopped: AtomicBool,
     stopped_mutex: Mutex<()>,
     cooldowns: Mutex<OrderedCooldowns>,
@@ -77,18 +75,16 @@ pub struct HintedScheduler {
 }
 
 impl HintedScheduler {
-    pub fn new(
+    pub(crate) fn new(
         config: HintedSchedulerConfig,
-        active_elections: Arc<RwLock<ActiveElectionsContainer>>,
+        aec_service: Arc<AecService>,
         ledger: Arc<Ledger>,
         stats: Arc<Stats>,
         vote_cache: Arc<Mutex<VoteCache>>,
         confirming_set: Arc<ConfirmingSet>,
         online_reps: Arc<Mutex<OnlineReps>>,
-        clock: Arc<SteadyClock>,
     ) -> Self {
-        let max_elections =
-            active_elections.read().unwrap().max_len() * config.hinted_limit_percentage / 100;
+        let max_elections = aec_service.max_len() * config.hinted_limit_percentage / 100;
 
         let notification_threshold =
             max_elections * config.vacancy_threshold_percent as usize / 100;
@@ -97,13 +93,12 @@ impl HintedScheduler {
             thread: Mutex::new(None),
             config,
             condition: Condvar::new(),
-            active_elections,
+            aec_service,
             ledger,
             stats,
             vote_cache,
             confirming_set,
             online_reps,
-            clock,
             stopped: AtomicBool::new(false),
             stopped_mutex: Mutex::new(()),
             cooldowns: Mutex::new(OrderedCooldowns::new()),
@@ -130,10 +125,9 @@ impl HintedScheduler {
     }
 
     fn aec_vacancy(&self) -> i64 {
-        let active = self.active_elections.read().unwrap();
-        let vacancy =
-            self.max_elections as i64 - active.count_by_behavior(ElectionBehavior::Hinted) as i64;
-        min(vacancy, active.vacancy())
+        let vacancy = self.max_elections as i64
+            - self.aec_service.count_by_behavior(ElectionBehavior::Hinted) as i64;
+        min(vacancy, self.aec_service.vacancy())
     }
 
     pub fn container_info(&self) -> ContainerInfo {
@@ -204,14 +198,8 @@ impl HintedScheduler {
                 }
 
                 // Try to insert it into AEC as hinted election
-                let now = self.clock.now();
                 let priority = any.block_priority(&block);
-                let inserted = self
-                    .active_elections
-                    .write()
-                    .unwrap()
-                    .insert(AecInsertRequest::new_hinted(block, priority), now)
-                    .is_ok();
+                let inserted = self.aec_service.insert_hinted(block, priority);
 
                 self.stats.inc(
                     StatType::Hinting,

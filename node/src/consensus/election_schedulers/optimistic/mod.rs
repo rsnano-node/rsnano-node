@@ -1,10 +1,9 @@
 use std::{
-    sync::{Arc, RwLock, atomic::Ordering::Relaxed},
+    sync::{Arc, atomic::Ordering::Relaxed},
     time::Duration,
 };
 
 use rsnano_ledger::{AnySet, Ledger, LedgerSet, OwningAnySet};
-use rsnano_nullable_clock::SteadyClock;
 use rsnano_nullable_condvar::NullableCondvarMutex;
 use rsnano_types::Account;
 use rsnano_utils::{
@@ -14,7 +13,7 @@ use rsnano_utils::{
 
 use crate::{
     cementation::ConfirmingSet,
-    consensus::{ActiveElectionsContainer, AecInsertRequest, election::ElectionBehavior},
+    consensus::{AecService, election::ElectionBehavior},
 };
 
 mod candidate_queue;
@@ -28,37 +27,28 @@ use stats::OptimisticSchedulerStats;
 
 pub struct OptimisticScheduler {
     logic: NullableCondvarMutex<OptimisticSchedulerLogic>,
-    aec: Arc<RwLock<ActiveElectionsContainer>>,
+    aec_service: Arc<AecService>,
     ledger: Arc<Ledger>,
     confirming_set: Arc<ConfirmingSet>,
-    clock: Arc<SteadyClock>,
-    max_elections: usize,
     activation_delay: Duration,
     stats: OptimisticSchedulerStats,
 }
 
 impl OptimisticScheduler {
-    pub fn new(
+    pub(crate) fn new(
         params: OptimisticSchedulerParams,
-        aec: Arc<RwLock<ActiveElectionsContainer>>,
+        aec_service: Arc<AecService>,
         ledger: Arc<Ledger>,
         confirming_set: Arc<ConfirmingSet>,
-        clock: Arc<SteadyClock>,
     ) -> Self {
         Self {
-            max_elections: params.max_elections,
             activation_delay: params.activation_delay,
             logic: NullableCondvarMutex::new(OptimisticSchedulerLogic::new(params)),
-            aec,
+            aec_service,
             ledger,
             confirming_set,
-            clock,
-            stats: OptimisticSchedulerStats::default(),
+            stats: Default::default(),
         }
-    }
-
-    pub fn max_elections(&self) -> usize {
-        self.max_elections
     }
 
     pub fn stop(&self) {
@@ -73,7 +63,7 @@ impl OptimisticScheduler {
 
     /// Called from backlog population to process accounts with unconfirmed blocks
     pub fn activate(&self, account: &Account, block_count: u64, confirmation_height: u64) -> bool {
-        let now = self.clock.now();
+        let now = self.aec_service.now();
         let mut logic = self.logic.lock();
         let activated = logic.try_activate(account, block_count, confirmation_height, now);
         if activated {
@@ -137,14 +127,8 @@ impl OptimisticScheduler {
         }
         // Try to insert it into AEC
         // We check for AEC vacancy inside our predicate
-        let now = self.clock.now();
         let priority = any.block_priority(&block);
-        let inserted = self
-            .aec
-            .write()
-            .unwrap()
-            .insert(AecInsertRequest::new_optimistic(block, priority), now)
-            .is_ok();
+        let inserted = self.aec_service.insert_optimistic(block, priority);
 
         if inserted {
             self.stats.insert_count.fetch_add(1, Relaxed);
@@ -154,14 +138,12 @@ impl OptimisticScheduler {
     }
 
     fn can_schedule(&self, logic: &OptimisticSchedulerLogic) -> bool {
-        let optimistic_count;
-        let aec_vacancy;
-        {
-            let aec = self.aec.read().unwrap();
-            optimistic_count = aec.count_by_behavior(ElectionBehavior::Optimistic);
-            aec_vacancy = aec.vacancy();
-        }
-        logic.can_schedule(optimistic_count, aec_vacancy, self.clock.now())
+        logic.can_schedule(
+            self.aec_service
+                .count_by_behavior(ElectionBehavior::Optimistic),
+            self.aec_service.vacancy(),
+            self.aec_service.now(),
+        )
     }
 
     #[cfg(test)]
@@ -212,9 +194,9 @@ mod tests {
 
     #[test]
     fn schedules_election_when_over_gap_threshold() {
-        let aec = Arc::new(RwLock::new(ActiveElectionsContainer::default()));
+        let aec_service = Arc::new(AecService::new_null());
         let ledger = Arc::new(Ledger::new_null());
-        let scheduler = make_scheduler_with(aec.clone(), ledger.clone());
+        let scheduler = make_scheduler_with(aec_service.clone(), ledger.clone());
 
         let mut builder = UnsavedBlockLatticeBuilder::with_stub_work();
         for _ in 0..TEST_GAP_THRESHOLD {
@@ -226,10 +208,7 @@ mod tests {
 
         scheduler.run_loop();
 
-        let optimistic_count = aec
-            .read()
-            .unwrap()
-            .count_by_behavior(ElectionBehavior::Optimistic);
+        let optimistic_count = aec_service.count_by_behavior(ElectionBehavior::Optimistic);
 
         assert_eq!(optimistic_count, 1, "should schedule the election");
         assert_eq!(
@@ -241,9 +220,9 @@ mod tests {
 
     #[test]
     fn schedules_election_when_account_is_unconfirmed() {
-        let aec = Arc::new(RwLock::new(ActiveElectionsContainer::default()));
+        let aec_service = Arc::new(AecService::new_null());
         let ledger = Arc::new(Ledger::new_null());
-        let scheduler = make_scheduler_with(aec.clone(), ledger.clone());
+        let scheduler = make_scheduler_with(aec_service.clone(), ledger.clone());
 
         let mut builder = UnsavedBlockLatticeBuilder::with_stub_work();
         let unconf_account = PrivateKey::from(42);
@@ -261,20 +240,17 @@ mod tests {
 
         scheduler.run_loop();
 
-        let optimistic_count = aec
-            .read()
-            .unwrap()
-            .count_by_behavior(ElectionBehavior::Optimistic);
+        let optimistic_count = aec_service.count_by_behavior(ElectionBehavior::Optimistic);
 
         assert_eq!(optimistic_count, 1, "should schedule the election");
-        assert!(aec.read().unwrap().is_active_hash(&receive.hash()));
+        assert!(aec_service.is_active_hash(&receive.hash()));
     }
 
     #[test]
     fn does_not_schedule_when_gap_is_under_threshold() {
-        let aec = Arc::new(RwLock::new(ActiveElectionsContainer::default()));
+        let aec_service = Arc::new(AecService::new_null());
         let ledger = Arc::new(Ledger::new_null());
-        let scheduler = make_scheduler_with(aec.clone(), ledger.clone());
+        let scheduler = make_scheduler_with(aec_service.clone(), ledger.clone());
 
         let mut builder = UnsavedBlockLatticeBuilder::with_stub_work();
         let account = PrivateKey::from(42);
@@ -296,18 +272,15 @@ mod tests {
 
         scheduler.run_loop();
 
-        let optimistic_count = aec
-            .read()
-            .unwrap()
-            .count_by_behavior(ElectionBehavior::Optimistic);
+        let optimistic_count = aec_service.count_by_behavior(ElectionBehavior::Optimistic);
         assert_eq!(optimistic_count, 0, "should not schedule any election");
     }
 
     #[test]
     fn schedules_elections_for_multiple_unconfirmed_accounts() {
-        let aec = Arc::new(RwLock::new(ActiveElectionsContainer::default()));
+        let aec_service = Arc::new(AecService::new_null());
         let ledger = Arc::new(Ledger::new_null());
-        let scheduler = make_scheduler_with(aec.clone(), ledger.clone());
+        let scheduler = make_scheduler_with(aec_service.clone(), ledger.clone());
 
         let mut builder = UnsavedBlockLatticeBuilder::with_stub_work();
         let account1 = PrivateKey::from(1);
@@ -328,17 +301,14 @@ mod tests {
 
         scheduler.run_loop();
 
-        let optimistic_count = aec
-            .read()
-            .unwrap()
-            .count_by_behavior(ElectionBehavior::Optimistic);
+        let optimistic_count = aec_service.count_by_behavior(ElectionBehavior::Optimistic);
 
         assert_eq!(
             optimistic_count, 2,
             "should schedule elections for both accounts"
         );
-        assert!(aec.read().unwrap().is_active_hash(&open1.hash()));
-        assert!(aec.read().unwrap().is_active_hash(&open2.hash()));
+        assert!(aec_service.is_active_hash(&open1.hash()));
+        assert!(aec_service.is_active_hash(&open2.hash()));
     }
 
     /* Test helpers */
@@ -346,30 +316,23 @@ mod tests {
     fn make_scheduler() -> OptimisticScheduler {
         OptimisticScheduler::new(
             test_params(),
-            Arc::new(RwLock::new(ActiveElectionsContainer::default())),
+            Arc::new(AecService::new_null()),
             Ledger::new_null().into(),
             ConfirmingSet::new_null().into(),
-            SteadyClock::new_null().into(),
         )
     }
 
-    fn make_scheduler_with(
-        aec: Arc<RwLock<ActiveElectionsContainer>>,
-        ledger: Arc<Ledger>,
-    ) -> OptimisticScheduler {
-        let logic =
-            NullableCondvarMutex::null_builder(OptimisticSchedulerLogic::new(test_params()))
-                .wait(|l| l.stop()) // stop after one wait call
-                .finish();
+    fn make_scheduler_with(aec_service: Arc<AecService>, ledger: Arc<Ledger>) -> OptimisticScheduler {
+        let logic = NullableCondvarMutex::null_builder(OptimisticSchedulerLogic::new(test_params()))
+            .wait(|l| l.stop()) // stop after one wait call
+            .finish();
 
         OptimisticScheduler {
             logic,
-            aec,
+            aec_service,
             ledger,
             confirming_set: ConfirmingSet::new_null().into(),
-            clock: SteadyClock::new_null().into(),
             stats: Default::default(),
-            max_elections: 10,
             activation_delay: Duration::ZERO,
         }
     }
