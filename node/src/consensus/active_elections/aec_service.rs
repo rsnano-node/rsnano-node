@@ -15,6 +15,8 @@ use rsnano_utils::{
     sync::backpressure_channel::{self, Receiver, Sender},
 };
 
+use super::AecFacts;
+
 use crate::{
     consensus::{
         ActiveElectionsConfig, ActiveElectionsContainer, AecCooldownReason, AecEvent,
@@ -27,7 +29,7 @@ use crate::{
 
 pub struct AecService {
     active: Arc<RwLock<ActiveElectionsContainer>>,
-    events_tx: Sender<AecEvent>,
+    events_tx: Mutex<Option<Sender<AecEvent>>>,
     events_rx: Mutex<Option<Receiver<AecEvent>>>,
     online_reps: Arc<Mutex<OnlineReps>>,
     clock: Arc<SteadyClock>,
@@ -48,12 +50,12 @@ impl AecService {
     ) -> Self {
         let (events_tx, events_rx) = backpressure_channel::channel(Self::EVENT_QUEUE_SOFT_LIMIT);
 
-        let mut active = ActiveElectionsContainer::new(config, base_latency);
-        active.set_observer(events_tx.clone());
-
         Self {
-            active: Arc::new(RwLock::new(active)),
-            events_tx,
+            active: Arc::new(RwLock::new(ActiveElectionsContainer::new(
+                config,
+                base_latency,
+            ))),
+            events_tx: Mutex::new(Some(events_tx)),
             events_rx: Mutex::new(Some(events_rx)),
             online_reps,
             clock,
@@ -80,7 +82,12 @@ impl AecService {
     }
 
     pub(crate) fn event_queue_len(&self) -> usize {
-        self.events_tx.len()
+        self.events_tx
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|sender| sender.len())
+            .unwrap_or(0)
     }
 
     pub(crate) fn start_event_processor<T>(&self, thread_name: impl Into<String>, processor: T)
@@ -98,11 +105,17 @@ impl AecService {
     }
 
     pub(crate) fn set_cooldown(&self, cool_down: bool, reason: AecCooldownReason) {
-        self.active.write().unwrap().set_cooldown(cool_down, reason);
+        let facts = self.active.write().unwrap().set_cooldown(cool_down, reason);
+        self.publish_facts(facts);
     }
 
     pub fn erase(&self, root: &QualifiedRoot) -> bool {
-        self.active.write().unwrap().erase(root)
+        let facts = self.active.write().unwrap().erase(root);
+        let erased = facts.is_some();
+        if let Some(facts) = facts {
+            self.publish_facts(facts);
+        }
+        erased
     }
 
     pub fn max_len(&self) -> usize {
@@ -180,21 +193,27 @@ impl AecService {
         &self,
         confirmed: Vec<(SavedBlock, Option<ConfirmedElection>)>,
     ) {
-        self.active
+        let facts = self
+            .active
             .write()
             .unwrap()
             .confirm_dependent_elections(confirmed, self.clock.now());
+        self.publish_facts(facts);
     }
 
     pub(crate) fn try_add_fork(&self, fork: &Block, fork_tally: Amount) -> bool {
-        self.active.write().unwrap().try_add_fork(fork, fork_tally)
+        let (added, facts) = self.active.write().unwrap().try_add_fork(fork, fork_tally);
+        self.publish_facts(facts);
+        added
     }
 
     pub(crate) fn transition_time(&self) {
-        self.active
+        let facts = self
+            .active
             .write()
             .unwrap()
             .transition_time(self.clock.now());
+        self.publish_facts(facts);
     }
 
     pub fn transition_active(&self, block_hash: &BlockHash) -> bool {
@@ -216,14 +235,13 @@ impl AecService {
     pub(crate) fn activate_manual(&self, block: SavedBlock, priority: BlockPriority) -> bool {
         let hash = block.hash();
         let mut active = self.active.write().unwrap();
-        if active
-            .insert(
-                AecInsertRequest::new_manual(block, priority),
-                self.clock.now(),
-            )
-            .is_ok()
-        {
+        if let Ok(facts) = active.insert(
+            AecInsertRequest::new_manual(block, priority),
+            self.clock.now(),
+        ) {
             active.transition_active(&hash);
+            drop(active);
+            self.publish_facts(facts);
             true
         } else {
             false
@@ -231,25 +249,31 @@ impl AecService {
     }
 
     pub(crate) fn insert_hinted(&self, block: SavedBlock, priority: BlockPriority) -> bool {
-        self.active
-            .write()
-            .unwrap()
-            .insert(
-                AecInsertRequest::new_hinted(block, priority),
-                self.clock.now(),
-            )
-            .is_ok()
+        let result = self.active.write().unwrap().insert(
+            AecInsertRequest::new_hinted(block, priority),
+            self.clock.now(),
+        );
+        match result {
+            Ok(facts) => {
+                self.publish_facts(facts);
+                true
+            }
+            Err(_) => false,
+        }
     }
 
     pub(crate) fn insert_optimistic(&self, block: SavedBlock, priority: BlockPriority) -> bool {
-        self.active
-            .write()
-            .unwrap()
-            .insert(
-                AecInsertRequest::new_optimistic(block, priority),
-                self.clock.now(),
-            )
-            .is_ok()
+        let result = self.active.write().unwrap().insert(
+            AecInsertRequest::new_optimistic(block, priority),
+            self.clock.now(),
+        );
+        match result {
+            Ok(facts) => {
+                self.publish_facts(facts);
+                true
+            }
+            Err(_) => false,
+        }
     }
 
     pub fn insert_priority(
@@ -257,10 +281,12 @@ impl AecService {
         block: SavedBlock,
         priority: BlockPriority,
     ) -> Result<(), AecInsertError> {
-        self.active.write().unwrap().insert(
+        let facts = self.active.write().unwrap().insert(
             AecInsertRequest::new_priority(block, priority),
             self.clock.now(),
-        )
+        )?;
+        self.publish_facts(facts);
+        Ok(())
     }
 
     pub(crate) fn bucket_len(&self, bucket: usize) -> usize {
@@ -279,10 +305,12 @@ impl AecService {
     }
 
     pub(crate) fn erase_lowest_prio_election(&self, bucket: usize) {
-        self.active
+        let facts = self
+            .active
             .write()
             .unwrap()
             .erase_lowest_prio_election(bucket);
+        self.publish_facts(facts);
     }
 
     pub(crate) fn next_vote_to_broadcast(
@@ -315,10 +343,12 @@ impl AecService {
     }
 
     pub fn force_confirm(&self, block_hash: &BlockHash) {
-        self.active
+        let facts = self
+            .active
             .write()
             .unwrap()
             .force_confirm(block_hash, self.clock.now());
+        self.publish_facts(facts);
     }
 
     pub fn cancel(&self, root: &QualifiedRoot) {
@@ -330,10 +360,11 @@ impl AecService {
     }
 
     pub fn simulate_event(&self, event: AecEvent) {
-        self.active.read().unwrap().simulate_event(event);
+        self.send_event(event);
     }
 
     pub fn stop(&self) {
+        self.events_tx.lock().unwrap().take();
         self.active.write().unwrap().stop();
     }
 
@@ -379,8 +410,16 @@ impl AecService {
             })
         };
 
-        self.notify_vote_processed(vote.vote.clone(), voter_weight, &results);
-        results
+        let per_block = results.per_block;
+        self.publish_facts(results.facts);
+        self.notify_vote_processed(vote.vote.clone(), voter_weight, &per_block);
+        per_block
+    }
+
+    fn publish_facts(&self, facts: AecFacts) {
+        for fact in facts {
+            self.send_event(fact.into());
+        }
     }
 
     fn notify_vote_processed(
@@ -389,9 +428,13 @@ impl AecService {
         voter_weight: Amount,
         results: &HashMap<BlockHash, Result<(), VoteError>>,
     ) {
-        let _ = self
-            .events_tx
-            .send(AecEvent::VoteProcessed(vote, voter_weight, results.clone()));
+        self.send_event(AecEvent::VoteProcessed(vote, voter_weight, results.clone()));
+    }
+
+    fn send_event(&self, event: AecEvent) {
+        if let Some(sender) = self.events_tx.lock().unwrap().as_ref() {
+            let _ = sender.send(event);
+        }
     }
 
     /// Temporary compatibility bridge for collaborators that have not yet migrated to AecService.
@@ -429,11 +472,7 @@ mod tests {
     fn construction_does_not_start_processing_implicitly() {
         let service = AecService::new_null();
 
-        service
-            .legacy_container()
-            .read()
-            .unwrap()
-            .simulate_event(AecEvent::Recovered);
+        service.simulate_event(AecEvent::Recovered);
 
         assert_eq!(service.event_queue_len(), 1);
     }
@@ -443,11 +482,7 @@ mod tests {
         let service = AecService::new_null();
         let processor = StubProcessor::default();
 
-        service
-            .legacy_container()
-            .read()
-            .unwrap()
-            .simulate_event(AecEvent::Recovered);
+        service.simulate_event(AecEvent::Recovered);
         assert!(processor.log().is_empty());
 
         service.start_event_processor("aec-service-test", processor.clone());
@@ -458,6 +493,26 @@ mod tests {
         }
 
         assert_eq!(processor.log(), vec!["processed"]);
+    }
+
+    #[test]
+    fn stop_closes_event_queue_and_rejects_further_publication() {
+        let service = AecService::new_null();
+
+        service.stop();
+        service.simulate_event(AecEvent::Recovered);
+
+        assert_eq!(service.event_queue_len(), 0);
+        assert!(matches!(
+            service
+                .events_rx
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .try_recv(),
+            Err(TryRecvError::Disconnected)
+        ));
     }
 
     #[test]

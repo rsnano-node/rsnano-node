@@ -1,10 +1,9 @@
 use std::{collections::HashMap, ops::Deref};
 
 use rsnano_types::{Amount, BlockHash, VoteError, VoteSource};
-use rsnano_utils::sync::backpressure_channel::Sender;
 
 use super::{
-    AecEvent, ApplyVoteArgs,
+    AecFact, AecFacts, ApplyVoteArgs,
     recently_confirmed_cache::RecentlyConfirmedCache,
     root_container::{Entry, RootContainer},
     stats::VoteCounter,
@@ -15,7 +14,6 @@ pub(super) struct ApplyVoteHelper<'a> {
     pub args: &'a ApplyVoteArgs<'a>,
     pub recently_confirmed: &'a mut RecentlyConfirmedCache,
     pub vote_counter: &'a mut VoteCounter,
-    pub observer: &'a Option<Sender<AecEvent>>,
     pub roots: &'a mut RootContainer,
 }
 
@@ -34,11 +32,12 @@ impl<'a> ApplyVoteHelper<'a> {
                         args: self.args,
                         recently_confirmed: self.recently_confirmed,
                         vote_counter: self.vote_counter,
-                        observer: self.observer,
+                        facts: AecFacts::new(),
                         election,
                         block_hash,
                     };
                     let vote_result = apply_to_election.apply_vote();
+                    result.facts.extend(apply_to_election.take_facts());
                     result.per_block.insert(*block_hash, vote_result);
                 }
 
@@ -65,13 +64,14 @@ impl<'a> ApplyVoteHelper<'a> {
 pub(crate) struct ApplyVoteResult {
     pub per_block: HashMap<BlockHash, Result<(), VoteError>>,
     pub confirmed: Vec<Entry>,
+    pub facts: AecFacts,
 }
 
 struct ApplyVoteToElectionHelper<'a> {
     pub args: &'a ApplyVoteArgs<'a>,
     pub recently_confirmed: &'a mut RecentlyConfirmedCache,
     pub vote_counter: &'a mut VoteCounter,
-    pub observer: &'a Option<Sender<AecEvent>>,
+    pub facts: AecFacts,
     pub election: &'a mut Election,
     pub block_hash: &'a BlockHash,
 }
@@ -137,7 +137,7 @@ impl<'a> ApplyVoteToElectionHelper<'a> {
     fn notify_winner_changed(&mut self, old_winner: BlockHash) {
         let winner_changed = self.election.winner().hash() != old_winner;
         if winner_changed {
-            self.notify(AecEvent::WinnerChanged(
+            self.facts.push(AecFact::WinnerChanged(
                 old_winner,
                 self.election.winner().deref().clone(),
             ));
@@ -151,7 +151,8 @@ impl<'a> ApplyVoteToElectionHelper<'a> {
             .election
             .into_confirmed_election(self.args.now, ConfirmationType::ActiveConfirmedQuorum);
 
-        self.notify(AecEvent::ElectionConfirmed(confirmed_election));
+        self.facts
+            .push(AecFact::ElectionConfirmed(confirmed_election));
     }
 
     fn insert_recently_confirmed(&mut self) {
@@ -161,10 +162,8 @@ impl<'a> ApplyVoteToElectionHelper<'a> {
         );
     }
 
-    fn notify(&self, event: AecEvent) {
-        if let Some(o) = self.observer {
-            o.send(event).unwrap();
-        }
+    fn take_facts(&mut self) -> AecFacts {
+        std::mem::take(&mut self.facts)
     }
 }
 
@@ -184,7 +183,6 @@ mod tests {
         Block, BlockPriority, PrivateKey, QualifiedRoot, SavedBlock, StateBlockArgs,
         UnixMillisTimestamp, Vote,
     };
-    use rsnano_utils::sync::backpressure_channel::channel;
     use std::time::Duration;
 
     #[test]
@@ -308,8 +306,8 @@ mod tests {
         fixture.apply_vote(vote).unwrap();
 
         assert_eq!(fixture.election.winner().hash(), fork.hash());
-        assert_eq!(fixture.events.len(), 1);
-        let AecEvent::WinnerChanged(old_winner, new_winner) = &fixture.events[0] else {
+        assert_eq!(fixture.facts.len(), 1);
+        let AecFact::WinnerChanged(old_winner, new_winner) = &fixture.facts.as_slice()[0] else {
             panic!("not a winner changed event");
         };
         assert_eq!(old_winner, &block.hash());
@@ -325,9 +323,11 @@ mod tests {
 
         fixture.apply_final_vote_from(VoteSource::Live).unwrap();
 
-        assert_eq!(fixture.events.len(), 1);
-
-        assert!(matches!(fixture.events[0], AecEvent::ElectionConfirmed(_)));
+        assert_eq!(fixture.facts.len(), 1);
+        assert!(matches!(
+            fixture.facts.as_slice()[0],
+            AecFact::ElectionConfirmed(_)
+        ));
     }
 
     // Test helpers:
@@ -397,7 +397,6 @@ mod tests {
                 args: &args,
                 recently_confirmed: &mut self.recently_confirmed,
                 vote_counter: &mut vote_counter,
-                observer: &None,
                 roots: &mut self.roots,
             };
 
@@ -419,7 +418,7 @@ mod tests {
         election: Election,
         rep1_key: PrivateKey,
         rep_weights: RepWeights,
-        events: Vec<AecEvent>,
+        facts: AecFacts,
     }
 
     impl FixtureForElection {
@@ -462,28 +461,22 @@ mod tests {
             let quorum_specs = QuorumSpecs::new_test_instance();
             let mut recently_confirmed = RecentlyConfirmedCache::default();
             let mut vote_counter = VoteCounter::default();
-            let (tx, rx) = channel(1024);
-
-            let result = {
-                ApplyVoteToElectionHelper {
-                    args: &ApplyVoteArgs {
-                        vote: &vote,
-                        rep_weights: &self.rep_weights,
-                        quorum_specs: &quorum_specs,
-                        now: Timestamp::new_test_instance(),
-                    },
-                    recently_confirmed: &mut recently_confirmed,
-                    vote_counter: &mut vote_counter,
-                    observer: &Some(tx),
-                    election: &mut self.election,
-                    block_hash: &vote.hashes[0],
-                }
-                .apply_vote()
+            let mut helper = ApplyVoteToElectionHelper {
+                args: &ApplyVoteArgs {
+                    vote: &vote,
+                    rep_weights: &self.rep_weights,
+                    quorum_specs: &quorum_specs,
+                    now: Timestamp::new_test_instance(),
+                },
+                recently_confirmed: &mut recently_confirmed,
+                vote_counter: &mut vote_counter,
+                facts: AecFacts::new(),
+                election: &mut self.election,
+                block_hash: &vote.hashes[0],
             };
 
-            while let Ok(ev) = rx.recv() {
-                self.events.push(ev);
-            }
+            let result = helper.apply_vote();
+            self.facts = helper.take_facts();
 
             result
         }
@@ -508,7 +501,7 @@ mod tests {
                 block,
                 election,
                 rep1_key,
-                events: Vec::new(),
+                facts: AecFacts::new(),
                 rep_weights,
             }
         }
