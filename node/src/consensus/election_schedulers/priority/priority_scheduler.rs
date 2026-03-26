@@ -252,23 +252,23 @@ impl PriorityScheduler {
         }
 
         let (block, priority) = bucket.pop_highest_priority().unwrap();
+        let result = if state.contains_candidate {
+            Err(AecInsertError::Duplicate)
+        } else if state.active_len >= bucket.reserved_elections() {
+            let Some((lowest_root, _)) = state.lowest.as_ref() else {
+                return false;
+            };
+            self.aec_service
+                .replace_lowest_priority_election(lowest_root, block, priority)
+        } else {
+            self.aec_service.insert_priority(block, priority)
+        };
 
-        if state.contains_candidate {
-            self.bucket_stats
-                .activate_failed_duplicate
-                .fetch_add(1, Ordering::Relaxed);
-            return false;
-        }
-
-        if state.active_len >= bucket.reserved_elections()
-            && let Some((lowest_root, _)) = state.lowest
-        {
-            self.aec_service.erase(&lowest_root);
-            self.bucket_stats.replaced.fetch_add(1, Ordering::Relaxed);
-        }
-
-        match self.aec_service.insert_priority(block, priority) {
+        match result {
             Ok(_) => {
+                if state.active_len >= bucket.reserved_elections() {
+                    self.bucket_stats.replaced.fetch_add(1, Ordering::Relaxed);
+                }
                 self.bucket_stats
                     .activate_success
                     .fetch_add(1, Ordering::Relaxed);

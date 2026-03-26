@@ -77,6 +77,7 @@ impl ActiveElectionsContainer {
             active_len: self.roots.bucket_len(bucket_id),
             contains_candidate: self.is_active_root(candidate_root),
             lowest: self.roots.lowest_priority(bucket_id),
+            is_cooling_down: self.cooldown.is_cooling_down(),
             vacancy: self.vacancy(),
         }
     }
@@ -297,6 +298,24 @@ impl ActiveElectionsContainer {
             return None;
         };
         Some(self.cleanup_election(entry).into())
+    }
+
+    pub(crate) fn replace_lowest_priority(
+        &mut self,
+        root: &QualifiedRoot,
+        request: AecInsertRequest,
+        now: Timestamp,
+    ) -> Result<AecFacts, AecInsertError> {
+        self.ensure_not_stopped()?;
+        self.ensure_not_recently_confirmed(&request)?;
+
+        let Some(erased) = self.roots.erase(root) else {
+            return Err(AecInsertError::Duplicate);
+        };
+
+        let mut facts = AecFacts::from(self.cleanup_election(erased));
+        facts.extend(self.insert_new_election(request, now));
+        Ok(facts)
     }
 
     fn cleanup_election(&mut self, entry: Entry) -> AecFact {

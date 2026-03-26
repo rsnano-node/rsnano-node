@@ -266,6 +266,21 @@ impl AecService {
         self.insert_impl(AecInsertRequest::new_priority(block, priority))
     }
 
+    pub(crate) fn replace_lowest_priority_election(
+        &self,
+        root: &QualifiedRoot,
+        block: SavedBlock,
+        priority: BlockPriority,
+    ) -> Result<(), AecInsertError> {
+        let facts = self.active.write().unwrap().replace_lowest_priority(
+            root,
+            AecInsertRequest::new_priority(block, priority),
+            self.clock.now(),
+        )?;
+        self.publish_facts(facts);
+        Ok(())
+    }
+
     pub(crate) fn priority_bucket_state(
         &self,
         bucket: usize,
@@ -559,6 +574,30 @@ mod tests {
         }
 
         assert!(observed_vote_processed);
+    }
+
+    #[test]
+    fn replace_lowest_priority_election_replaces_active_root() {
+        let service = AecService::new_null();
+        let old_block = SavedBlock::new_test_instance_with_key(1);
+        let new_block = SavedBlock::new_test_instance_with_key(2);
+        let old_root = old_block.qualified_root();
+        let new_root = new_block.qualified_root();
+        let priority = BlockPriority::new_test_instance();
+
+        service
+            .insert_for_test(
+                AecInsertRequest::new_priority(old_block, priority),
+                service.clock.now(),
+            )
+            .unwrap();
+
+        service
+            .replace_lowest_priority_election(&old_root, new_block, priority)
+            .unwrap();
+
+        assert!(!service.is_active_root(&old_root));
+        assert!(service.is_active_root(&new_root));
     }
 
     #[derive(Clone, Default)]

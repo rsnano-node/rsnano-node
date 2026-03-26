@@ -7,6 +7,7 @@ pub(crate) struct PriorityBucketState {
     pub active_len: usize,
     pub contains_candidate: bool,
     pub lowest: Option<(QualifiedRoot, TimePriority)>,
+    pub is_cooling_down: bool,
     pub vacancy: i64,
 }
 
@@ -116,7 +117,11 @@ impl Bucket {
             return false;
         }
 
-        state.vacancy > 0 // cooldown check. TODO: check for cooldown explicitly
+        if state.is_cooling_down {
+            return false;
+        }
+
+        state.vacancy > 0
     }
 }
 
@@ -188,6 +193,24 @@ mod tests {
             Err(BucketInsertError::Duplicate)
         );
         assert_eq!(bucket.len(), 1);
+    }
+
+    #[test]
+    fn unavailable_during_cooldown_without_replacement() {
+        let mut fixture = create_fixture();
+        let bucket = &mut fixture.bucket;
+        let block = SavedBlock::new_test_instance();
+
+        bucket.insert(test_priority(1000), block).unwrap();
+
+        assert_eq!(
+            bucket.available(&PriorityBucketState {
+                vacancy: 1,
+                is_cooling_down: true,
+                ..Default::default()
+            }),
+            false
+        );
     }
 
     #[test]
