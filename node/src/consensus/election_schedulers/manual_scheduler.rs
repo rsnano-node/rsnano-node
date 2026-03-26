@@ -12,7 +12,7 @@ use rsnano_utils::{
     stats::{DetailType, StatType, Stats},
 };
 
-use crate::consensus::{AecService, election::ElectionBehavior};
+use crate::consensus::{AecInsertRequest, AecService, election::ElectionBehavior};
 
 pub struct ManualScheduler {
     thread: Mutex<Option<JoinHandle<()>>>,
@@ -89,10 +89,17 @@ impl ManualScheduler {
                     drop(guard);
 
                     let priority = self.ledger.any().block_priority(&block);
+                    let hash = block.hash();
                     self.stats
                         .inc(StatType::ElectionScheduler, DetailType::InsertManual);
 
-                    self.aec_service.activate_manual(block, priority);
+                    if self
+                        .aec_service
+                        .insert(AecInsertRequest::new_manual(block, priority))
+                        .is_ok()
+                    {
+                        self.aec_service.transition_active(&hash);
+                    }
                 } else {
                     drop(guard);
                 }

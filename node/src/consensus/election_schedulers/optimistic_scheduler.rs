@@ -20,7 +20,7 @@ use rsnano_utils::{
 use crate::{
     cementation::ConfirmingSet,
     config::NetworkConstants,
-    consensus::{AecService, election::ElectionBehavior},
+    consensus::{AecInsertRequest, AecService, election::ElectionBehavior},
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -231,7 +231,10 @@ impl OptimisticScheduler {
                 // Try to insert it into AEC
                 // We check for AEC vacancy inside our predicate
                 let priority = any.block_priority(&block);
-                let inserted = self.aec_service.insert_optimistic(block, priority);
+                let inserted = self
+                    .aec_service
+                    .insert(AecInsertRequest::new_optimistic(block, priority))
+                    .is_ok();
 
                 if inserted {
                     self.stats
