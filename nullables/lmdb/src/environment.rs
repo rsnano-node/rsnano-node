@@ -1,7 +1,7 @@
 use std::{
     ffi::CString,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, atomic::AtomicBool},
 };
 
 use lmdb::{DatabaseFlags, EnvironmentFlags, Stat};
@@ -273,6 +273,7 @@ impl EnvironmentWrapper {
 
 struct EnvironmentStub {
     databases: Arc<Mutex<Vec<ConfiguredDatabase>>>,
+    write_active: Arc<AtomicBool>,
 }
 
 impl EnvironmentStub {
@@ -283,6 +284,7 @@ impl EnvironmentStub {
     fn new_with(databases: Vec<ConfiguredDatabase>) -> Self {
         Self {
             databases: Arc::new(Mutex::new(databases)),
+            write_active: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -291,26 +293,28 @@ impl EnvironmentStub {
     }
 
     fn begin_write(&self) -> WriteTransaction {
-        WriteTransaction::new_null(self.databases.clone())
+        WriteTransaction::new_null(self.databases.clone(), self.write_active.clone())
     }
 
     fn create_db(&self, name: Option<&str>, _flags: DatabaseFlags) -> lmdb::Result<LmdbDatabase> {
         let mut guard = self.databases.lock().unwrap();
-        if let Some(db) = guard.iter().find(|x| name == Some(&x.db_name)) {
+        let db_name = name.unwrap_or("");
+        if let Some(db) = guard.iter().find(|x| x.db_name == db_name) {
             return Ok(db.dbi);
         }
 
         let dbi = create_dbi(&guard);
-        guard.push(ConfiguredDatabase::new(dbi, name.unwrap().to_owned()));
+        guard.push(ConfiguredDatabase::new(dbi, db_name.to_owned()));
         Ok(dbi)
     }
 
     fn open_db(&self, name: Option<&str>) -> lmdb::Result<LmdbDatabase> {
+        let db_name = name.unwrap_or("");
         self.databases
             .lock()
             .unwrap()
             .iter()
-            .find(|x| name == Some(&x.db_name))
+            .find(|x| x.db_name == db_name)
             .map(|x| x.dbi)
             .ok_or(lmdb::Error::NotFound)
     }
@@ -404,6 +408,15 @@ mod tests {
     }
 
     #[test]
+    fn create_unnamed_db() {
+        let path = TempLmdbFile::new();
+        let env = create_lmdb_env(path);
+        env.create_db(None, DatabaseFlags::empty()).unwrap();
+        let result = env.open_db(None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
     fn write_key_value() {
         let path = TempLmdbFile::new();
         let env = create_lmdb_env(path);
@@ -474,6 +487,14 @@ mod tests {
             let env = LmdbEnvironment::new_null();
             env.create_db(Some("mydb"), DatabaseFlags::empty()).unwrap();
             let result = env.open_db(Some("mydb"));
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn create_unnamed_db() {
+            let env = LmdbEnvironment::new_null();
+            env.create_db(None, DatabaseFlags::empty()).unwrap();
+            let result = env.open_db(None);
             assert!(result.is_ok());
         }
 
