@@ -1713,7 +1713,7 @@ impl CompositeNodeEventHandler {
 mod tests {
     use super::*;
     use crate::consensus::{
-        AecEvent, AecTickerPlugin, BootstrapStaleElections, StaleElectionsStats,
+        AecFact, AecTickerPlugin, BootstrapStaleElections, StaleElectionsStats,
     };
     use rsnano_utils::{stats::StatsSource, ticker::Tickable};
     use std::any::type_name;
@@ -1796,7 +1796,7 @@ mod tests {
         let winner_hash = election.winner.hash();
 
         node.aec_delivery
-            .publish(AecEvent::ElectionConfirmed(election));
+            .publish(AecFact::ElectionConfirmed(election));
 
         let output = broadcast_tracker.wait_output().unwrap();
         assert_eq!(output, vec![winner_hash]);

@@ -18,7 +18,7 @@ use super::{AecDelivery, AecFacts};
 
 use crate::{
     consensus::{
-        ActiveElectionsConfig, ActiveElectionsContainer, AecCooldownReason, AecEvent,
+        ActiveElectionsConfig, ActiveElectionsContainer, AecCooldownReason, AecFact,
         AecInsertError, AecInsertRequest, AecSchedulerRequest, AecTickerRead, ApplyVoteArgs,
         ConfirmationActiveInfo, FilteredVote, ReceivedVote,
         election::{ConfirmedElection, Election, ElectionBehavior, ElectionState, VoteType},
@@ -391,7 +391,7 @@ impl AecService {
 
     fn publish_facts(&self, facts: AecFacts) {
         for fact in facts {
-            self.send_event(fact.into());
+            self.send_fact(fact);
         }
     }
 
@@ -401,11 +401,11 @@ impl AecService {
         voter_weight: Amount,
         results: &HashMap<BlockHash, Result<(), VoteError>>,
     ) {
-        self.send_event(AecEvent::VoteProcessed(vote, voter_weight, results.clone()));
+        self.send_fact(AecFact::VoteProcessed(vote, voter_weight, results.clone()));
     }
 
-    fn send_event(&self, event: AecEvent) {
-        self.delivery.publish(event);
+    fn send_fact(&self, fact: AecFact) {
+        self.delivery.publish(fact);
     }
 
     #[cfg(test)]
@@ -461,7 +461,7 @@ impl AecTickerRead for AecService {
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use crate::consensus::{AecEvent, AecInsertRequest};
+    use crate::consensus::{AecFact, AecInsertRequest};
     use crate::utils::BackpressureEventProcessor;
     use rsnano_types::{
         BlockPriority, PrivateKey, SavedBlock, UnixMillisTimestamp, Vote, VoteSource,
@@ -474,7 +474,7 @@ mod tests {
     fn construction_does_not_start_processing_implicitly() {
         let (service, delivery) = AecService::new_null_with_delivery();
 
-        delivery.publish(AecEvent::Recovered);
+        delivery.publish(AecFact::Recovered);
 
         assert_eq!(service.event_queue_len(), 1);
     }
@@ -484,7 +484,7 @@ mod tests {
         let (_service, delivery) = AecService::new_null_with_delivery();
         let processor = StubProcessor::default();
 
-        delivery.publish(AecEvent::Recovered);
+        delivery.publish(AecFact::Recovered);
         assert!(processor.log().is_empty());
 
         delivery.start_event_processor("aec-service-test", processor.clone());
@@ -503,7 +503,7 @@ mod tests {
 
         delivery.stop();
         service.stop();
-        delivery.publish(AecEvent::Recovered);
+        delivery.publish(AecFact::Recovered);
 
         assert_eq!(service.event_queue_len(), 0);
         assert!(matches!(
@@ -541,7 +541,7 @@ mod tests {
 
         while start.elapsed() < Duration::from_secs(5) {
             match service.delivery.try_recv() {
-                Ok(AecEvent::VoteProcessed(processed_vote, voter_weight, per_block_results)) => {
+                Ok(AecFact::VoteProcessed(processed_vote, voter_weight, per_block_results)) => {
                     assert_eq!(processed_vote.vote.hashes, vote.vote.hashes);
                     assert_eq!(voter_weight, Amount::MAX);
                     assert_eq!(per_block_results.get(&block_hash), Some(&Ok(())));
@@ -549,9 +549,9 @@ mod tests {
                     break;
                 }
                 Ok(
-                    AecEvent::ElectionStarted(_, _)
-                    | AecEvent::ElectionConfirmed(_)
-                    | AecEvent::ElectionEnded(_),
+                    AecFact::ElectionStarted(_, _)
+                    | AecFact::ElectionConfirmed(_)
+                    | AecFact::ElectionEnded(_),
                 ) => {}
                 Ok(other) => panic!("unexpected event: {:?}", std::mem::discriminant(&other)),
                 Err(TryRecvError::Empty) => std::thread::yield_now(),
@@ -634,14 +634,14 @@ mod tests {
         }
     }
 
-    impl BackpressureEventProcessor<AecEvent> for StubProcessor {
+    impl BackpressureEventProcessor<AecFact> for StubProcessor {
         fn cool_down(&mut self) {}
 
         fn recovered(&mut self) {
             self.log.lock().unwrap().push("recovered");
         }
 
-        fn process(&mut self, _event: AecEvent) {
+        fn process(&mut self, _event: AecFact) {
             self.log.lock().unwrap().push("processed");
         }
     }

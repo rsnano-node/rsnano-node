@@ -39,13 +39,11 @@ impl Default for ActiveElectionsConfig {
     }
 }
 
-pub enum AecEvent {
+pub(crate) enum AecFact {
     ElectionStarted(BlockHash, QualifiedRoot),
     ElectionConfirmed(ConfirmedElection),
-
     /// Ended ether confirmed or unconfirmed
     ElectionEnded(Election),
-
     BlockAddedToElection(BlockHash),
     BlockDiscarded(Block),
     BlockConfirmed(SavedBlock, ConfirmedElection),
@@ -58,34 +56,6 @@ pub enum AecEvent {
         HashMap<BlockHash, Result<(), VoteError>>,
     ),
     Recovered,
-}
-
-pub(crate) enum AecFact {
-    ElectionStarted(BlockHash, QualifiedRoot),
-    ElectionConfirmed(ConfirmedElection),
-    ElectionEnded(Election),
-    BlockAddedToElection(BlockHash),
-    BlockDiscarded(Block),
-    BlockConfirmed(SavedBlock, ConfirmedElection),
-    WinnerChanged(BlockHash, Block),
-    Recovered,
-}
-
-impl From<AecFact> for AecEvent {
-    fn from(value: AecFact) -> Self {
-        match value {
-            AecFact::ElectionStarted(hash, root) => Self::ElectionStarted(hash, root),
-            AecFact::ElectionConfirmed(election) => Self::ElectionConfirmed(election),
-            AecFact::ElectionEnded(election) => Self::ElectionEnded(election),
-            AecFact::BlockAddedToElection(hash) => Self::BlockAddedToElection(hash),
-            AecFact::BlockDiscarded(block) => Self::BlockDiscarded(block),
-            AecFact::BlockConfirmed(block, election) => Self::BlockConfirmed(block, election),
-            AecFact::WinnerChanged(old_winner, new_winner) => {
-                Self::WinnerChanged(old_winner, new_winner)
-            }
-            AecFact::Recovered => Self::Recovered,
-        }
-    }
 }
 
 #[derive(Default)]

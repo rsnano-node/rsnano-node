@@ -3,13 +3,13 @@ use std::sync::Mutex;
 use rsnano_utils::sync::backpressure_channel::{self, Receiver, Sender};
 
 use crate::{
-    consensus::AecEvent,
+    consensus::AecFact,
     utils::{BackpressureEventProcessor, spawn_backpressure_processor},
 };
 
 pub(crate) struct AecDelivery {
-    sender: Mutex<Option<Sender<AecEvent>>>,
-    receiver: Mutex<Option<Receiver<AecEvent>>>,
+    sender: Mutex<Option<Sender<AecFact>>>,
+    receiver: Mutex<Option<Receiver<AecFact>>>,
 }
 
 impl AecDelivery {
@@ -32,7 +32,7 @@ impl AecDelivery {
 
     pub(crate) fn start_event_processor<T>(&self, thread_name: impl Into<String>, processor: T)
     where
-        T: BackpressureEventProcessor<AecEvent> + Send + 'static,
+        T: BackpressureEventProcessor<AecFact> + Send + 'static,
     {
         let receiver = self
             .receiver
@@ -44,7 +44,7 @@ impl AecDelivery {
         spawn_backpressure_processor(thread_name, receiver, processor);
     }
 
-    pub(crate) fn publish(&self, event: AecEvent) {
+    pub(crate) fn publish(&self, event: AecFact) {
         if let Some(sender) = self.sender.lock().unwrap().as_ref() {
             let _ = sender.send(event);
         }
@@ -55,7 +55,7 @@ impl AecDelivery {
     }
 
     #[cfg(test)]
-    pub(crate) fn try_recv(&self) -> Result<AecEvent, std::sync::mpsc::TryRecvError> {
+    pub(crate) fn try_recv(&self) -> Result<AecFact, std::sync::mpsc::TryRecvError> {
         self.receiver
             .lock()
             .unwrap()
