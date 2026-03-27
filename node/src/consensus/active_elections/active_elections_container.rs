@@ -229,15 +229,15 @@ impl ActiveElectionsContainer {
     ) -> Result<AecFacts, AecInsertError> {
         let candidate_root = block.qualified_root();
         let state = self.priority_bucket_state(bucket_index, &candidate_root);
-        if state.contains_candidate {
-            return Err(AecInsertError::Duplicate);
-        }
-
         let request = AecInsertRequest {
             block,
             behavior: ElectionBehavior::Priority,
             priority,
         };
+        if state.contains_candidate {
+            return self.insert(request, now);
+        }
+
         if state.active_len >= reserved_elections {
             let Some((lowest_root, _)) = state.lowest else {
                 debug_assert!(false, "priority replacement requires a lowest election");
@@ -707,6 +707,37 @@ mod tests {
             Some((block.root(), block.hash(), VoteType::NonFinal))
         );
         assert_eq!(second, None);
+    }
+
+    #[test]
+    fn priority_activation_upgrades_existing_optimistic_election() {
+        let mut container = ActiveElectionsContainer::default();
+        let block = SavedBlock::new_test_instance();
+        let priority = BlockPriority::new_test_instance();
+        let now = Timestamp::new_test_instance();
+        let bucket_index =
+            crate::consensus::election_schedulers::priority::prio_bucket_index(priority.balance);
+
+        container
+            .insert(
+                AecInsertRequest {
+                    block: block.clone(),
+                    behavior: ElectionBehavior::Optimistic,
+                    priority,
+                },
+                now,
+            )
+            .unwrap();
+
+        let facts = container
+            .activate(AecActivateRequest::priority(block.clone(), priority, bucket_index, 1), now)
+            .unwrap();
+
+        assert_eq!(facts.len(), 0);
+        assert_eq!(
+            container.election_for_block(&block.hash()).unwrap().behavior(),
+            ElectionBehavior::Priority
+        );
     }
 
     fn test_final_vote(rep_key: &PrivateKey, block_hash: BlockHash) -> ReceivedVote {
