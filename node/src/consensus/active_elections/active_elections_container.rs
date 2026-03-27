@@ -233,7 +233,11 @@ impl ActiveElectionsContainer {
             return Err(AecInsertError::Duplicate);
         }
 
-        let request = AecInsertRequest::new_priority(block, priority);
+        let request = AecInsertRequest {
+            block,
+            behavior: ElectionBehavior::Priority,
+            priority,
+        };
         if state.active_len >= reserved_elections {
             let Some((lowest_root, _)) = state.lowest else {
                 debug_assert!(false, "priority replacement requires a lowest election");
@@ -685,7 +689,14 @@ mod tests {
         );
 
         container
-            .insert(AecInsertRequest::new_priority(block.clone(), priority), now)
+            .insert(
+                AecInsertRequest {
+                    block: block.clone(),
+                    behavior: ElectionBehavior::Priority,
+                    priority,
+                },
+                now,
+            )
             .unwrap();
 
         let first = container.next_vote_to_broadcast(bucket, interval, now);
@@ -707,7 +718,11 @@ mod tests {
         let mut container = ActiveElectionsContainer::default();
 
         for (block, prio) in blocks {
-            let request = AecInsertRequest::new_priority((**block).clone(), *prio);
+            let request = AecInsertRequest {
+                block: (**block).clone(),
+                behavior: ElectionBehavior::Priority,
+                priority: *prio,
+            };
 
             container
                 .insert(request, Timestamp::new_test_instance())

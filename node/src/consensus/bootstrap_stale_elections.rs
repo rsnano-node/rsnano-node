@@ -95,7 +95,9 @@ impl StatsSource for StaleElectionsStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::consensus::{AecInsertRequest, AecService};
+    use crate::consensus::{
+        AecActivateRequest, AecService, election_schedulers::priority::prio_bucket_index,
+    };
     use rsnano_types::{BlockPriority, SavedBlock};
 
     #[test]
@@ -119,8 +121,8 @@ mod tests {
         let prio = BlockPriority::new_test_instance();
         let account = block.account();
         let aec = AecService::new_null();
-        aec.insert_for_test(
-            AecInsertRequest::new_priority(block, prio),
+        aec.activate_for_test(
+            AecActivateRequest::priority(block, prio, prio_bucket_index(prio.balance), 1),
             clock.now() - BootstrapStaleElections::DEFAULT_STALE_THRESHOLD,
         )
         .unwrap();

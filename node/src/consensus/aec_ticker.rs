@@ -82,6 +82,10 @@ pub(crate) trait AecTickerPlugin: Send + 'static {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::consensus::{
+        AecActivateRequest,
+        election_schedulers::priority::prio_bucket_index,
+    };
     use rsnano_types::{BlockPriority, SavedBlock};
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -94,9 +98,15 @@ mod tests {
 
         let block = SavedBlock::new_test_instance_with_key(1);
 
+        let priority = BlockPriority::new_test_instance();
         ticker
             .aec_service
-            .insert_priority(block.clone(), BlockPriority::new_test_instance())
+            .activate(AecActivateRequest::priority(
+                block.clone(),
+                priority,
+                prio_bucket_index(priority.balance),
+                1,
+            ))
             .unwrap();
 
         ticker.tick(&CancellationToken::new_null());

@@ -7,7 +7,7 @@ use std::{
 use rsnano_ledger::RepWeightCache;
 use rsnano_nullable_clock::{SteadyClock, Timestamp};
 use rsnano_types::{
-    Amount, Block, BlockHash, BlockPriority, PublicKey, QualifiedRoot, Root, SavedBlock, VoteError,
+    Amount, Block, BlockHash, PublicKey, QualifiedRoot, Root, SavedBlock, VoteError,
 };
 use rsnano_utils::{
     container_info::{ContainerInfo, ContainerInfoProvider},
@@ -19,7 +19,7 @@ use super::{AecDelivery, AecFacts};
 use crate::{
     consensus::{
         ActiveElectionsConfig, ActiveElectionsContainer, AecActivateRequest, AecCooldownReason,
-        AecFact, AecInsertError, AecInsertRequest, AecTickerRead, ApplyVoteArgs,
+        AecFact, AecInsertError, AecTickerRead, ApplyVoteArgs,
         ConfirmationActiveInfo, FilteredVote, ReceivedVote,
         election::{ConfirmedElection, Election, ElectionBehavior, ElectionState, VoteType},
         election_schedulers::priority::PriorityBucketState,
@@ -247,29 +247,10 @@ impl AecService {
             .remove_votes(root, voters.iter());
     }
 
-    pub(crate) fn activate(&self, request: AecActivateRequest) -> Result<(), AecInsertError> {
+    pub fn activate(&self, request: AecActivateRequest) -> Result<(), AecInsertError> {
         let facts = self.active.write().unwrap().activate(request, self.clock.now())?;
         self.publish_facts(facts);
         Ok(())
-    }
-
-    fn insert_impl(&self, request: AecInsertRequest) -> Result<(), AecInsertError> {
-        let facts = self
-            .active
-            .write()
-            .unwrap()
-            .insert(request, self.clock.now())?;
-        self.publish_facts(facts);
-        Ok(())
-    }
-
-    // Temporary compatibility for non-scheduler callers until Unit 3 migrates them.
-    pub fn insert_priority(
-        &self,
-        block: SavedBlock,
-        priority: BlockPriority,
-    ) -> Result<(), AecInsertError> {
-        self.insert_impl(AecInsertRequest::new_priority(block, priority))
     }
 
     pub(crate) fn priority_bucket_state(
@@ -388,12 +369,12 @@ impl AecService {
     }
 
     #[cfg(test)]
-    pub(crate) fn insert_for_test(
+    pub(crate) fn activate_for_test(
         &self,
-        request: AecInsertRequest,
+        request: AecActivateRequest,
         now: Timestamp,
     ) -> Result<(), AecInsertError> {
-        let facts = self.active.write().unwrap().insert(request, now)?;
+        let facts = self.active.write().unwrap().activate(request, now)?;
         self.publish_facts(facts);
         Ok(())
     }
@@ -441,7 +422,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use crate::consensus::{
-        AecActivateRequest, AecFact, AecInsertRequest, election_schedulers::priority::prio_bucket_index,
+        AecActivateRequest, AecFact, election_schedulers::priority::prio_bucket_index,
     };
     use crate::utils::BackpressureEventProcessor;
     use rsnano_types::{
@@ -502,8 +483,13 @@ mod tests {
 
         service.rep_weights.put(rep_key.public_key(), Amount::MAX);
         service
-            .insert_for_test(
-                AecInsertRequest::new_priority(block, BlockPriority::new_test_instance()),
+            .activate_for_test(
+                AecActivateRequest::priority(
+                    block,
+                    BlockPriority::new_test_instance(),
+                    prio_bucket_index(BlockPriority::new_test_instance().balance),
+                    1,
+                ),
                 service.clock.now(),
             )
             .unwrap();
@@ -554,8 +540,13 @@ mod tests {
         let bucket_index = prio_bucket_index(priority.balance);
 
         service
-            .insert_for_test(
-                AecInsertRequest::new_priority(old_block, priority),
+            .activate_for_test(
+                AecActivateRequest::priority(
+                    old_block,
+                    priority,
+                    bucket_index,
+                    1,
+                ),
                 service.clock.now(),
             )
             .unwrap();
@@ -580,8 +571,13 @@ mod tests {
         let root = block.qualified_root();
 
         service
-            .insert_for_test(
-                AecInsertRequest::new_priority(block, BlockPriority::new_test_instance()),
+            .activate_for_test(
+                AecActivateRequest::priority(
+                    block,
+                    BlockPriority::new_test_instance(),
+                    prio_bucket_index(BlockPriority::new_test_instance().balance),
+                    1,
+                ),
                 service.clock.now(),
             )
             .unwrap();
@@ -598,8 +594,13 @@ mod tests {
         let block = SavedBlock::new_test_instance();
 
         service
-            .insert_for_test(
-                AecInsertRequest::new_priority(block, BlockPriority::new_test_instance()),
+            .activate_for_test(
+                AecActivateRequest::priority(
+                    block,
+                    BlockPriority::new_test_instance(),
+                    prio_bucket_index(BlockPriority::new_test_instance().balance),
+                    1,
+                ),
                 service.clock.now(),
             )
             .unwrap();

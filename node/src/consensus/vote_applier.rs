@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use crate::consensus::{AecInsertRequest, AecService};
+    use crate::consensus::{
+        AecActivateRequest, AecService, election_schedulers::priority::prio_bucket_index,
+    };
     use crate::{consensus::ReceivedVote, representatives::OnlineReps};
     use rsnano_ledger::RepWeightCache;
     use rsnano_nullable_clock::SteadyClock;
@@ -45,9 +47,10 @@ mod tests {
             Amount::nano(43_550_000)
         );
 
+        let priority = BlockPriority::new_test_instance();
         service
-            .insert_for_test(
-                AecInsertRequest::new_priority(block, BlockPriority::new_test_instance()),
+            .activate_for_test(
+                AecActivateRequest::priority(block, priority, prio_bucket_index(priority.balance), 1),
                 clock.now(),
             )
             .unwrap();

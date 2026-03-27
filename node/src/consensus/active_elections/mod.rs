@@ -124,44 +124,10 @@ pub struct ConfirmationActiveInfo {
     pub confirmed: u64,
 }
 
-pub struct AecInsertRequest {
+pub(crate) struct AecInsertRequest {
     pub block: SavedBlock,
     pub behavior: ElectionBehavior,
     pub priority: BlockPriority,
-}
-
-impl AecInsertRequest {
-    pub fn new_hinted(block: SavedBlock, priority: BlockPriority) -> Self {
-        Self {
-            block,
-            behavior: ElectionBehavior::Hinted,
-            priority,
-        }
-    }
-
-    pub fn new_optimistic(block: SavedBlock, priority: BlockPriority) -> Self {
-        Self {
-            block,
-            behavior: ElectionBehavior::Optimistic,
-            priority,
-        }
-    }
-
-    pub fn new_manual(block: SavedBlock, priority: BlockPriority) -> Self {
-        Self {
-            block,
-            behavior: ElectionBehavior::Manual,
-            priority,
-        }
-    }
-
-    pub fn new_priority(block: SavedBlock, priority: BlockPriority) -> Self {
-        Self {
-            block,
-            behavior: ElectionBehavior::Priority,
-            priority,
-        }
-    }
 }
 
 pub enum AecActivateRequest {
@@ -227,14 +193,28 @@ impl AecActivateRequest {
 
     fn into_insert_request(self) -> AecInsertRequest {
         match self {
-            Self::Manual { block, priority } => AecInsertRequest::new_manual(block, priority),
-            Self::Hinted { block, priority } => AecInsertRequest::new_hinted(block, priority),
-            Self::Optimistic { block, priority } => {
-                AecInsertRequest::new_optimistic(block, priority)
-            }
+            Self::Manual { block, priority } => AecInsertRequest {
+                block,
+                behavior: ElectionBehavior::Manual,
+                priority,
+            },
+            Self::Hinted { block, priority } => AecInsertRequest {
+                block,
+                behavior: ElectionBehavior::Hinted,
+                priority,
+            },
+            Self::Optimistic { block, priority } => AecInsertRequest {
+                block,
+                behavior: ElectionBehavior::Optimistic,
+                priority,
+            },
             Self::Priority {
                 block, priority, ..
-            } => AecInsertRequest::new_priority(block, priority),
+            } => AecInsertRequest {
+                block,
+                behavior: ElectionBehavior::Priority,
+                priority,
+            },
         }
     }
 }

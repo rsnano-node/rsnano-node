@@ -49,7 +49,10 @@ mod tests {
     use crate::{
         block_processing::LedgerPipelineEvent,
         block_processing::{BlockSource, ProcessedResult},
-        consensus::{AecInsertRequest, AecService, election::ElectionBehavior},
+        consensus::{
+            AecActivateRequest, AecService, election::ElectionBehavior,
+            election_schedulers::priority::prio_bucket_index,
+        },
         ledger_snapshots::{LedgerSnapshots, fork_detector::ForkDetector},
     };
     use rsnano_ledger::LedgerEvent;
@@ -178,8 +181,14 @@ mod tests {
     fn stop_forked_election() {
         let block = SavedBlock::new_test_instance();
         let aec_service = Arc::new(AecService::new_null());
+        let priority = BlockPriority::new_test_instance();
         aec_service
-            .insert_priority(block.clone(), BlockPriority::new_test_instance())
+            .activate(AecActivateRequest::priority(
+                block.clone(),
+                priority,
+                prio_bucket_index(priority.balance),
+                1,
+            ))
             .unwrap();
 
         let ledger = Arc::new(Ledger::new_null());
