@@ -164,7 +164,7 @@ impl AecInsertRequest {
     }
 }
 
-pub enum AecSchedulerRequest {
+pub enum AecActivateRequest {
     Manual {
         block: SavedBlock,
         priority: BlockPriority,
@@ -177,9 +177,15 @@ pub enum AecSchedulerRequest {
         block: SavedBlock,
         priority: BlockPriority,
     },
+    Priority {
+        block: SavedBlock,
+        priority: BlockPriority,
+        bucket_index: usize,
+        reserved_elections: usize,
+    },
 }
 
-impl AecSchedulerRequest {
+impl AecActivateRequest {
     pub fn manual(block: SavedBlock, priority: BlockPriority) -> Self {
         Self::Manual { block, priority }
     }
@@ -192,27 +198,43 @@ impl AecSchedulerRequest {
         Self::Optimistic { block, priority }
     }
 
+    pub fn priority(
+        block: SavedBlock,
+        priority: BlockPriority,
+        bucket_index: usize,
+        reserved_elections: usize,
+    ) -> Self {
+        Self::Priority {
+            block,
+            priority,
+            bucket_index,
+            reserved_elections,
+        }
+    }
+
     fn block_hash(&self) -> BlockHash {
         match self {
             Self::Manual { block, .. }
             | Self::Hinted { block, .. }
-            | Self::Optimistic { block, .. } => block.hash(),
+            | Self::Optimistic { block, .. }
+            | Self::Priority { block, .. } => block.hash(),
         }
     }
 
     fn transitions_to_active(&self) -> bool {
         matches!(self, Self::Manual { .. })
     }
-}
 
-impl From<AecSchedulerRequest> for AecInsertRequest {
-    fn from(value: AecSchedulerRequest) -> Self {
-        match value {
-            AecSchedulerRequest::Manual { block, priority } => Self::new_manual(block, priority),
-            AecSchedulerRequest::Hinted { block, priority } => Self::new_hinted(block, priority),
-            AecSchedulerRequest::Optimistic { block, priority } => {
-                Self::new_optimistic(block, priority)
+    fn into_insert_request(self) -> AecInsertRequest {
+        match self {
+            Self::Manual { block, priority } => AecInsertRequest::new_manual(block, priority),
+            Self::Hinted { block, priority } => AecInsertRequest::new_hinted(block, priority),
+            Self::Optimistic { block, priority } => {
+                AecInsertRequest::new_optimistic(block, priority)
             }
+            Self::Priority {
+                block, priority, ..
+            } => AecInsertRequest::new_priority(block, priority),
         }
     }
 }

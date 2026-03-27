@@ -20,7 +20,7 @@ use super::{
     prio_bucket_index,
 };
 use crate::consensus::{
-    AecInsertError, AecService,
+    AecActivateRequest, AecInsertError, AecService,
     election_schedulers::priority::{BucketInsertError, Eviction},
 };
 
@@ -252,17 +252,12 @@ impl PriorityScheduler {
         }
 
         let (block, priority) = bucket.pop_highest_priority().unwrap();
-        let result = if state.contains_candidate {
-            Err(AecInsertError::Duplicate)
-        } else if state.active_len >= bucket.reserved_elections() {
-            let Some((lowest_root, _)) = state.lowest.as_ref() else {
-                return false;
-            };
-            self.aec_service
-                .replace_lowest_priority_election(lowest_root, block, priority)
-        } else {
-            self.aec_service.insert_priority(block, priority)
-        };
+        let result = self.aec_service.activate(AecActivateRequest::priority(
+            block,
+            priority,
+            bucket_id,
+            bucket.reserved_elections(),
+        ));
 
         match result {
             Ok(_) => {

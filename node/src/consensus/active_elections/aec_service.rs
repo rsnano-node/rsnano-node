@@ -18,8 +18,8 @@ use super::{AecDelivery, AecFacts};
 
 use crate::{
     consensus::{
-        ActiveElectionsConfig, ActiveElectionsContainer, AecCooldownReason, AecFact,
-        AecInsertError, AecInsertRequest, AecSchedulerRequest, AecTickerRead, ApplyVoteArgs,
+        ActiveElectionsConfig, ActiveElectionsContainer, AecActivateRequest, AecCooldownReason,
+        AecFact, AecInsertError, AecInsertRequest, AecTickerRead, ApplyVoteArgs,
         ConfirmationActiveInfo, FilteredVote, ReceivedVote,
         election::{ConfirmedElection, Election, ElectionBehavior, ElectionState, VoteType},
         election_schedulers::priority::PriorityBucketState,
@@ -247,16 +247,9 @@ impl AecService {
             .remove_votes(root, voters.iter());
     }
 
-    pub(crate) fn scheduler_activate(
-        &self,
-        request: AecSchedulerRequest,
-    ) -> Result<(), AecInsertError> {
-        let hash = request.block_hash();
-        let transition_active = request.transitions_to_active();
-        self.insert_impl(request.into())?;
-        if transition_active {
-            self.transition_active(&hash);
-        }
+    pub(crate) fn activate(&self, request: AecActivateRequest) -> Result<(), AecInsertError> {
+        let facts = self.active.write().unwrap().activate(request, self.clock.now())?;
+        self.publish_facts(facts);
         Ok(())
     }
 
@@ -270,27 +263,13 @@ impl AecService {
         Ok(())
     }
 
+    // Temporary compatibility for non-scheduler callers until Unit 3 migrates them.
     pub fn insert_priority(
         &self,
         block: SavedBlock,
         priority: BlockPriority,
     ) -> Result<(), AecInsertError> {
         self.insert_impl(AecInsertRequest::new_priority(block, priority))
-    }
-
-    pub(crate) fn replace_lowest_priority_election(
-        &self,
-        root: &QualifiedRoot,
-        block: SavedBlock,
-        priority: BlockPriority,
-    ) -> Result<(), AecInsertError> {
-        let facts = self.active.write().unwrap().replace_lowest_priority(
-            root,
-            AecInsertRequest::new_priority(block, priority),
-            self.clock.now(),
-        )?;
-        self.publish_facts(facts);
-        Ok(())
     }
 
     pub(crate) fn priority_bucket_state(
@@ -461,7 +440,9 @@ impl AecTickerRead for AecService {
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use crate::consensus::{AecFact, AecInsertRequest};
+    use crate::consensus::{
+        AecActivateRequest, AecFact, AecInsertRequest, election_schedulers::priority::prio_bucket_index,
+    };
     use crate::utils::BackpressureEventProcessor;
     use rsnano_types::{
         BlockPriority, PrivateKey, SavedBlock, UnixMillisTimestamp, Vote, VoteSource,
@@ -563,13 +544,14 @@ mod tests {
     }
 
     #[test]
-    fn replace_lowest_priority_election_replaces_active_root() {
+    fn activate_priority_replaces_active_root_via_aec_owned_path() {
         let service = AecService::new_null();
         let old_block = SavedBlock::new_test_instance_with_key(1);
         let new_block = SavedBlock::new_test_instance_with_key(2);
         let old_root = old_block.qualified_root();
         let new_root = new_block.qualified_root();
         let priority = BlockPriority::new_test_instance();
+        let bucket_index = prio_bucket_index(priority.balance);
 
         service
             .insert_for_test(
@@ -579,7 +561,12 @@ mod tests {
             .unwrap();
 
         service
-            .replace_lowest_priority_election(&old_root, new_block, priority)
+            .activate(AecActivateRequest::priority(
+                new_block,
+                priority,
+                bucket_index,
+                1,
+            ))
             .unwrap();
 
         assert!(!service.is_active_root(&old_root));

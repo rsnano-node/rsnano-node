@@ -4,7 +4,7 @@ use strum::EnumCount;
 
 use rsnano_ledger::RepWeights;
 use rsnano_nullable_clock::Timestamp;
-use rsnano_types::{Amount, Block, BlockHash, PublicKey, QualifiedRoot, Root, SavedBlock};
+use rsnano_types::{Amount, Block, BlockHash, BlockPriority, PublicKey, QualifiedRoot, Root, SavedBlock};
 use rsnano_utils::{
     container_info::{ContainerInfo, ContainerInfoProvider},
     stats::{StatsCollection, StatsSource},
@@ -23,8 +23,8 @@ use crate::{
 };
 
 use super::{
-    ActiveElectionsConfig, ActiveElectionsInfo, AecFact, AecFacts, AecInsertError,
-    AecInsertRequest, Entry, RootContainer,
+    ActiveElectionsConfig, ActiveElectionsInfo, AecActivateRequest, AecFact, AecFacts,
+    AecInsertError, AecInsertRequest, Entry, RootContainer,
     apply_vote_helper::{ApplyVoteHelper, ApplyVoteResult},
     cooldown_controller::{AecCooldownReason, CooldownController, CooldownResult},
     recently_confirmed_cache::RecentlyConfirmedCache,
@@ -103,6 +103,31 @@ impl ActiveElectionsContainer {
         }
 
         Ok(self.insert_new_election(request, now))
+    }
+
+    pub(crate) fn activate(
+        &mut self,
+        request: AecActivateRequest,
+        now: Timestamp,
+    ) -> Result<AecFacts, AecInsertError> {
+        let block_hash = request.block_hash();
+        let transition_active = request.transitions_to_active();
+
+        let facts = match request {
+            AecActivateRequest::Priority {
+                block,
+                priority,
+                bucket_index,
+                reserved_elections,
+            } => self.activate_priority(block, priority, bucket_index, reserved_elections, now)?,
+            request => self.insert(request.into_insert_request(), now)?,
+        };
+
+        if transition_active {
+            self.transition_active(&block_hash);
+        }
+
+        Ok(facts)
     }
 
     pub fn set_last_voted(
@@ -192,6 +217,32 @@ impl ActiveElectionsContainer {
         *self.count_by_behavior_mut(request.behavior) += 1;
         self.stats.started(request.behavior);
         AecFact::ElectionStarted(hash, root).into()
+    }
+
+    fn activate_priority(
+        &mut self,
+        block: SavedBlock,
+        priority: BlockPriority,
+        bucket_index: usize,
+        reserved_elections: usize,
+        now: Timestamp,
+    ) -> Result<AecFacts, AecInsertError> {
+        let candidate_root = block.qualified_root();
+        let state = self.priority_bucket_state(bucket_index, &candidate_root);
+        if state.contains_candidate {
+            return Err(AecInsertError::Duplicate);
+        }
+
+        let request = AecInsertRequest::new_priority(block, priority);
+        if state.active_len >= reserved_elections {
+            let Some((lowest_root, _)) = state.lowest else {
+                debug_assert!(false, "priority replacement requires a lowest election");
+                return Err(AecInsertError::Duplicate);
+            };
+            self.replace_lowest_priority(&lowest_root, request, now)
+        } else {
+            self.insert(request, now)
+        }
     }
 
     pub(crate) fn try_add_fork(&mut self, fork: &Block, fork_tally: Amount) -> (bool, AecFacts) {

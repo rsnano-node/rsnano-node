@@ -14,7 +14,7 @@ use rsnano_utils::{
 
 use crate::{
     cementation::ConfirmingSet,
-    consensus::{AecSchedulerRequest, AecService, election::ElectionBehavior},
+    consensus::{AecActivateRequest, AecService, election::ElectionBehavior},
 };
 
 mod candidate_queue;
@@ -140,7 +140,7 @@ impl OptimisticScheduler {
         let priority = any.block_priority(&block);
         let inserted = self
             .aec_service
-            .scheduler_activate(AecSchedulerRequest::optimistic(block, priority))
+            .activate(AecActivateRequest::optimistic(block, priority))
             .is_ok();
 
         if inserted {
