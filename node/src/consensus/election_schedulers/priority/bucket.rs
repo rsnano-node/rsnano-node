@@ -1,13 +1,15 @@
-use std::sync::atomic::Ordering;
+use rsnano_types::{BlockHash, BlockPriority, QualifiedRoot, SavedBlock, TimePriority};
 
-use rsnano_nullable_clock::Timestamp;
-use rsnano_types::{BlockHash, BlockPriority, SavedBlock};
+use super::ordered_blocks::{BlockEntry, OrderedBlocks};
 
-use super::{
-    bucket_stats::BucketStats,
-    ordered_blocks::{BlockEntry, OrderedBlocks},
-};
-use crate::consensus::{ActiveElectionsContainer, AecInsertError, AecInsertRequest};
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct PriorityBucketState {
+    pub active_len: usize,
+    pub contains_candidate: bool,
+    pub lowest: Option<(QualifiedRoot, TimePriority)>,
+    pub is_cooling_down: bool,
+    pub vacancy: i64,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PriorityBucketConfig {
@@ -36,15 +38,13 @@ impl Default for PriorityBucketConfig {
 pub struct Bucket {
     config: PriorityBucketConfig,
     block_queue: OrderedBlocks,
-    bucket_id: usize,
 }
 
 impl Bucket {
-    pub fn new(config: PriorityBucketConfig, bucket_id: usize) -> Self {
+    pub fn new(config: PriorityBucketConfig, _bucket_id: usize) -> Self {
         Self {
             config,
             block_queue: Default::default(),
-            bucket_id,
         }
     }
 
@@ -60,8 +60,18 @@ impl Bucket {
         self.len() == 0
     }
 
+    pub(crate) fn reserved_elections(&self) -> usize {
+        self.config.reserved_elections
+    }
+
     pub fn blocks(&self) -> impl Iterator<Item = &SavedBlock> {
         self.block_queue.iter().map(|i| &i.block)
+    }
+
+    pub(crate) fn pop_highest_priority(&mut self) -> Option<(SavedBlock, BlockPriority)> {
+        self.block_queue
+            .pop_highest_prio()
+            .map(|entry| (entry.block, entry.priority))
     }
 
     pub fn insert(
@@ -86,78 +96,32 @@ impl Bucket {
         }
     }
 
-    pub fn available(&self, aec: &ActiveElectionsContainer) -> bool {
+    pub(crate) fn available(&self, state: &PriorityBucketState) -> bool {
         let Some(highest_block) = self.block_queue.highest_prio() else {
             // No blocks enqueued
             return false;
         };
 
         let candidate_prio = highest_block.priority.time;
-        let bucket_len = aec.bucket_len(self.bucket_id);
-        let lowest_prio = aec.lowest_priority(self.bucket_id);
-
-        let can_reprioritize = lowest_prio
-            .map(|(_, lowest)| candidate_prio > lowest)
+        let can_reprioritize = state
+            .lowest
+            .as_ref()
+            .map(|(_, lowest)| candidate_prio > *lowest)
             .unwrap_or(false);
 
         if can_reprioritize {
             return true;
         }
 
-        if bucket_len >= self.config.reserved_elections {
+        if state.active_len >= self.config.reserved_elections {
             return false;
         }
 
-        aec.vacancy() > 0 // cooldown check. TODO: check for cooldown explicitly
-    }
-
-    pub fn activate(
-        &mut self,
-        aec: &mut ActiveElectionsContainer,
-        now: Timestamp,
-        stats: &BucketStats,
-    ) {
-        if !self.available(aec) {
-            return;
+        if state.is_cooling_down {
+            return false;
         }
 
-        let Some(top) = self.block_queue.pop_highest_prio() else {
-            return; // Not activated;
-        };
-
-        let block = top.block;
-        let priority = top.priority;
-        let root = block.qualified_root();
-
-        if aec.find_bucket(&root) == Some(self.bucket_id) {
-            stats
-                .activate_failed_duplicate
-                .fetch_add(1, Ordering::Relaxed);
-            return;
-        }
-
-        if aec.bucket_len(self.bucket_id) >= self.config.reserved_elections {
-            // TODO aec.replace(old, new);
-            aec.erase_lowest_prio_election(self.bucket_id);
-            stats.replaced.fetch_add(1, Ordering::Relaxed);
-        }
-
-        match aec.insert(AecInsertRequest::new_priority(block, priority), now) {
-            Ok(_) => {
-                stats.activate_success.fetch_add(1, Ordering::Relaxed);
-            }
-            Err(AecInsertError::RecentlyConfirmed) => {
-                stats
-                    .activate_failed_confirmed
-                    .fetch_add(1, Ordering::Relaxed);
-            }
-            Err(AecInsertError::Duplicate) => {
-                stats
-                    .activate_failed_duplicate
-                    .fetch_add(1, Ordering::Relaxed);
-            }
-            Err(AecInsertError::Stopped) => {}
-        }
+        state.vacancy > 0
     }
 }
 
@@ -189,8 +153,7 @@ mod tests {
 
         assert_eq!(bucket.len(), 0);
         assert_eq!(bucket.contains(&BlockHash::from(1)), false);
-        let aec = ActiveElectionsContainer::default();
-        assert_eq!(bucket.available(&aec), false);
+        assert_eq!(bucket.available(&PriorityBucketState::default()), false);
     }
 
     #[test]
@@ -206,8 +169,13 @@ mod tests {
 
         assert_eq!(bucket.len(), 1);
         assert_eq!(bucket.contains(&block.hash()), true);
-        let aec = ActiveElectionsContainer::default();
-        assert_eq!(bucket.available(&aec), true);
+        assert_eq!(
+            bucket.available(&PriorityBucketState {
+                vacancy: 1,
+                ..Default::default()
+            }),
+            true
+        );
     }
 
     #[test]
@@ -225,6 +193,24 @@ mod tests {
             Err(BucketInsertError::Duplicate)
         );
         assert_eq!(bucket.len(), 1);
+    }
+
+    #[test]
+    fn unavailable_during_cooldown_without_replacement() {
+        let mut fixture = create_fixture();
+        let bucket = &mut fixture.bucket;
+        let block = SavedBlock::new_test_instance();
+
+        bucket.insert(test_priority(1000), block).unwrap();
+
+        assert_eq!(
+            bucket.available(&PriorityBucketState {
+                vacancy: 1,
+                is_cooling_down: true,
+                ..Default::default()
+            }),
+            false
+        );
     }
 
     #[test]

@@ -1,0 +1,636 @@
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex, RwLock},
+    time::Duration,
+};
+
+use rsnano_ledger::RepWeightCache;
+use rsnano_nullable_clock::{SteadyClock, Timestamp};
+use rsnano_types::{
+    Amount, Block, BlockHash, PublicKey, QualifiedRoot, Root, SavedBlock, VoteError,
+};
+use rsnano_utils::{
+    container_info::{ContainerInfo, ContainerInfoProvider},
+    stats::{StatsCollection, StatsSource},
+};
+
+use super::{AecDelivery, AecFacts};
+
+use crate::{
+    consensus::{
+        ActiveElectionsConfig, ActiveElectionsContainer, AecActivateRequest, AecCooldownReason,
+        AecFact, AecInsertError, AecTickerRead, ApplyVoteArgs,
+        ConfirmationActiveInfo, FilteredVote, ReceivedVote,
+        election::{ConfirmedElection, Election, ElectionBehavior, ElectionState, VoteType},
+        election_schedulers::priority::PriorityBucketState,
+    },
+    representatives::OnlineReps,
+};
+
+pub struct AecService {
+    active: Arc<RwLock<ActiveElectionsContainer>>,
+    delivery: Arc<AecDelivery>,
+    online_reps: Arc<Mutex<OnlineReps>>,
+    clock: Arc<SteadyClock>,
+    rep_weights: Arc<RepWeightCache>,
+    is_dev_network: bool,
+}
+
+impl AecService {
+    const EVENT_QUEUE_SOFT_LIMIT: usize = 1024 * 5;
+
+    pub fn new(
+        config: ActiveElectionsConfig,
+        base_latency: Duration,
+        online_reps: Arc<Mutex<OnlineReps>>,
+        clock: Arc<SteadyClock>,
+        rep_weights: Arc<RepWeightCache>,
+        is_dev_network: bool,
+    ) -> Self {
+        Self::new_with_delivery(
+            config,
+            base_latency,
+            online_reps,
+            clock,
+            rep_weights,
+            is_dev_network,
+        )
+        .0
+    }
+
+    pub(crate) fn new_with_delivery(
+        config: ActiveElectionsConfig,
+        base_latency: Duration,
+        online_reps: Arc<Mutex<OnlineReps>>,
+        clock: Arc<SteadyClock>,
+        rep_weights: Arc<RepWeightCache>,
+        is_dev_network: bool,
+    ) -> (Self, Arc<AecDelivery>) {
+        let delivery = Arc::new(AecDelivery::new(Self::EVENT_QUEUE_SOFT_LIMIT));
+        (
+            Self {
+                active: Arc::new(RwLock::new(ActiveElectionsContainer::new(
+                    config,
+                    base_latency,
+                ))),
+                delivery: delivery.clone(),
+                online_reps,
+                clock,
+                rep_weights,
+                is_dev_network,
+            },
+            delivery,
+        )
+    }
+
+    pub fn new_null() -> Self {
+        Self::new_null_with_delivery().0
+    }
+
+    pub(crate) fn new_null_with_delivery() -> (Self, Arc<AecDelivery>) {
+        let rep_weights = Arc::new(RepWeightCache::default());
+        let online_reps = Arc::new(Mutex::new(
+            OnlineReps::builder()
+                .rep_weights(rep_weights.clone())
+                .finish(),
+        ));
+        Self::new_with_delivery(
+            ActiveElectionsConfig::default(),
+            Duration::from_secs(1),
+            online_reps,
+            Arc::new(SteadyClock::new_null()),
+            rep_weights,
+            false,
+        )
+    }
+
+    pub(crate) fn event_queue_len(&self) -> usize {
+        self.delivery.queue_len()
+    }
+
+    pub(crate) fn set_cooldown(&self, cool_down: bool, reason: AecCooldownReason) {
+        let facts = self.active.write().unwrap().set_cooldown(cool_down, reason);
+        self.publish_facts(facts);
+    }
+
+    pub fn erase(&self, root: &QualifiedRoot) -> bool {
+        let facts = self.active.write().unwrap().erase(root);
+        let erased = facts.is_some();
+        if let Some(facts) = facts {
+            self.publish_facts(facts);
+        }
+        erased
+    }
+
+    pub fn max_len(&self) -> usize {
+        self.active.read().unwrap().max_len()
+    }
+
+    // Shared AEC query surface used by production callers and tests.
+    // These methods answer AEC-shaped questions without exposing caller-specific
+    // traversal or runtime helpers.
+    pub fn vacancy(&self) -> i64 {
+        self.active.read().unwrap().vacancy()
+    }
+
+    pub fn info(&self) -> crate::consensus::ActiveElectionsInfo {
+        self.active.read().unwrap().info()
+    }
+
+    pub fn was_recently_confirmed(&self, block_hash: &BlockHash) -> bool {
+        self.active
+            .read()
+            .unwrap()
+            .was_recently_confirmed(block_hash)
+    }
+
+    pub fn confirmation_active(&self, announcements: u64) -> ConfirmationActiveInfo {
+        if announcements > 0 {
+            return ConfirmationActiveInfo::default();
+        }
+
+        let mut result = ConfirmationActiveInfo::default();
+        let active = self.active.read().unwrap();
+        for election in active.iter_round_robin() {
+            if election.is_confirmed() {
+                result.confirmed += 1;
+            } else {
+                result
+                    .unconfirmed_roots
+                    .push(election.qualified_root().clone());
+            }
+        }
+        result
+    }
+
+    pub fn count_by_behavior(&self, behavior: ElectionBehavior) -> usize {
+        self.active.read().unwrap().count_by_behavior(behavior)
+    }
+
+    pub fn is_active_root(&self, root: &QualifiedRoot) -> bool {
+        self.active.read().unwrap().is_active_root(root)
+    }
+
+    pub fn is_active_hash(&self, hash: &BlockHash) -> bool {
+        self.active.read().unwrap().is_active_hash(hash)
+    }
+
+    pub fn election_for_root(&self, root: &QualifiedRoot) -> Option<Election> {
+        self.active.read().unwrap().election_for_root(root).cloned()
+    }
+
+    pub fn election_for_block(&self, hash: &BlockHash) -> Option<Election> {
+        self.active
+            .read()
+            .unwrap()
+            .election_for_block(hash)
+            .cloned()
+    }
+
+    pub fn len(&self) -> usize {
+        self.active.read().unwrap().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.active.read().unwrap().is_empty()
+    }
+
+    pub(crate) fn remove_recently_confirmed(&self, block_hash: &BlockHash) {
+        self.active
+            .write()
+            .unwrap()
+            .remove_recently_confirmed(block_hash);
+    }
+
+    // Shared AEC mutation surface. Caller-specific helpers below are temporary and
+    // are removed unit by unit as the boundary is narrowed.
+    pub(crate) fn confirm_dependent_elections(
+        &self,
+        confirmed: Vec<(SavedBlock, Option<ConfirmedElection>)>,
+    ) {
+        let facts = self
+            .active
+            .write()
+            .unwrap()
+            .confirm_dependent_elections(confirmed, self.clock.now());
+        self.publish_facts(facts);
+    }
+
+    pub(crate) fn try_add_fork(&self, fork: &Block, fork_tally: Amount) -> bool {
+        let (added, facts) = self.active.write().unwrap().try_add_fork(fork, fork_tally);
+        self.publish_facts(facts);
+        added
+    }
+
+    pub(crate) fn transition_time(&self) {
+        let facts = self
+            .active
+            .write()
+            .unwrap()
+            .transition_time(self.clock.now());
+        self.publish_facts(facts);
+    }
+
+    pub fn transition_active(&self, block_hash: &BlockHash) -> bool {
+        self.active.write().unwrap().transition_active(block_hash)
+    }
+
+    pub(crate) fn remove_votes(
+        &self,
+        root: &QualifiedRoot,
+        voters: impl IntoIterator<Item = PublicKey>,
+    ) {
+        let voters = voters.into_iter().collect::<Vec<_>>();
+        self.active
+            .write()
+            .unwrap()
+            .remove_votes(root, voters.iter());
+    }
+
+    pub fn activate(&self, request: AecActivateRequest) -> Result<(), AecInsertError> {
+        let facts = self.active.write().unwrap().activate(request, self.clock.now())?;
+        self.publish_facts(facts);
+        Ok(())
+    }
+
+    pub(crate) fn priority_bucket_state(
+        &self,
+        bucket: usize,
+        candidate_root: &QualifiedRoot,
+    ) -> PriorityBucketState {
+        self.active
+            .read()
+            .unwrap()
+            .priority_bucket_state(bucket, candidate_root)
+    }
+
+    pub(in crate::consensus) fn next_vote_to_broadcast_for_voter(
+        &self,
+        bucket: usize,
+        vote_broadcast_interval: Duration,
+        now: Timestamp,
+    ) -> Option<(Root, BlockHash, VoteType)> {
+        self.active
+            .write()
+            .unwrap()
+            .next_vote_to_broadcast(bucket, vote_broadcast_interval, now)
+    }
+
+    pub fn clear_recently_confirmed(&self) {
+        self.active.write().unwrap().clear_recently_confirmed();
+    }
+
+    pub fn force_confirm(&self, block_hash: &BlockHash) {
+        let facts = self
+            .active
+            .write()
+            .unwrap()
+            .force_confirm(block_hash, self.clock.now());
+        self.publish_facts(facts);
+    }
+
+    pub fn cancel(&self, root: &QualifiedRoot) {
+        self.active.write().unwrap().cancel(root);
+    }
+
+    pub fn cancel_all(&self) {
+        self.active.write().unwrap().cancel_all();
+    }
+
+    pub fn stop(&self) {
+        self.active.write().unwrap().stop();
+    }
+
+    pub(crate) fn apply_vote(
+        &self,
+        vote: &FilteredVote,
+    ) -> HashMap<BlockHash, Result<(), VoteError>> {
+        debug_assert!(vote.validate().is_ok());
+
+        let minimum_pr_weight = self.online_reps.lock().unwrap().minimum_principal_weight();
+        let voter_weight = self.rep_weights.weight(&vote.voter);
+
+        if !self.is_dev_network && voter_weight <= minimum_pr_weight {
+            return vote
+                .filtered_blocks()
+                .map(|hash| (*hash, Err(VoteError::Indeterminate)))
+                .collect();
+        }
+
+        let is_active = {
+            let active = self.active.read().unwrap();
+            vote.filtered_blocks()
+                .any(|hash| active.is_active_hash(hash))
+        };
+
+        let now = self.clock.now();
+        let quorum_specs = {
+            let mut online = self.online_reps.lock().unwrap();
+            if is_active {
+                online.vote_observed(vote.voter, now);
+            }
+            online.quorum_specs()
+        };
+
+        let results = {
+            let mut active = self.active.write().unwrap();
+            let rep_weights = self.rep_weights.read();
+            active.apply_vote(ApplyVoteArgs {
+                vote,
+                rep_weights: &rep_weights,
+                quorum_specs: &quorum_specs,
+                now,
+            })
+        };
+
+        let per_block = results.per_block;
+        self.publish_facts(results.facts);
+        self.notify_vote_processed(vote.vote.clone(), voter_weight, &per_block);
+        per_block
+    }
+
+    fn publish_facts(&self, facts: AecFacts) {
+        for fact in facts {
+            self.send_fact(fact);
+        }
+    }
+
+    fn notify_vote_processed(
+        &self,
+        vote: ReceivedVote,
+        voter_weight: Amount,
+        results: &HashMap<BlockHash, Result<(), VoteError>>,
+    ) {
+        self.send_fact(AecFact::VoteProcessed(vote, voter_weight, results.clone()));
+    }
+
+    fn send_fact(&self, fact: AecFact) {
+        self.delivery.publish(fact);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn activate_for_test(
+        &self,
+        request: AecActivateRequest,
+        now: Timestamp,
+    ) -> Result<(), AecInsertError> {
+        let facts = self.active.write().unwrap().activate(request, now)?;
+        self.publish_facts(facts);
+        Ok(())
+    }
+}
+
+impl StatsSource for AecService {
+    fn collect_stats(&self, result: &mut StatsCollection) {
+        self.active.read().unwrap().collect_stats(result);
+    }
+}
+
+impl ContainerInfoProvider for AecService {
+    fn container_info(&self) -> ContainerInfo {
+        self.active.read().unwrap().container_info()
+    }
+}
+
+impl AecTickerRead for AecService {
+    fn for_each_confirmation_solicitation_election(&self, action: &mut dyn FnMut(&Election)) {
+        let active = self.active.read().unwrap();
+        for election in active.iter_round_robin() {
+            if election.state() == ElectionState::Active {
+                action(election);
+            }
+        }
+    }
+
+    fn for_each_stale_election(
+        &self,
+        now: Timestamp,
+        stale_threshold: Duration,
+        action: &mut dyn FnMut(&Election),
+    ) {
+        let active = self.active.read().unwrap();
+        for election in active.iter_round_robin() {
+            if election.start().elapsed(now) >= stale_threshold {
+                action(election);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use crate::consensus::{
+        AecActivateRequest, AecFact, election_schedulers::priority::prio_bucket_index,
+    };
+    use crate::utils::BackpressureEventProcessor;
+    use rsnano_types::{
+        BlockPriority, PrivateKey, SavedBlock, UnixMillisTimestamp, Vote, VoteSource,
+    };
+    use std::sync::mpsc::TryRecvError;
+
+    use super::*;
+
+    #[test]
+    fn construction_does_not_start_processing_implicitly() {
+        let (service, delivery) = AecService::new_null_with_delivery();
+
+        delivery.publish(AecFact::Recovered);
+
+        assert_eq!(service.event_queue_len(), 1);
+    }
+
+    #[test]
+    fn processing_starts_only_when_explicitly_requested() {
+        let (_service, delivery) = AecService::new_null_with_delivery();
+        let processor = StubProcessor::default();
+
+        delivery.publish(AecFact::Recovered);
+        assert!(processor.log().is_empty());
+
+        delivery.start_event_processor("aec-service-test", processor.clone());
+
+        let start = std::time::Instant::now();
+        while processor.log().is_empty() && start.elapsed() < Duration::from_secs(5) {
+            std::thread::yield_now();
+        }
+
+        assert_eq!(processor.log(), vec!["processed"]);
+    }
+
+    #[test]
+    fn stop_closes_event_queue_and_rejects_further_publication() {
+        let (service, delivery) = AecService::new_null_with_delivery();
+
+        delivery.stop();
+        service.stop();
+        delivery.publish(AecFact::Recovered);
+
+        assert_eq!(service.event_queue_len(), 0);
+        assert!(matches!(
+            delivery.try_recv(),
+            Err(TryRecvError::Disconnected)
+        ));
+    }
+
+    #[test]
+    fn apply_vote_publishes_vote_processed_event() {
+        let service = AecService::new_null();
+        let rep_key = PrivateKey::from(1);
+        let block = SavedBlock::new_test_instance();
+        let block_hash = block.hash();
+
+        service.rep_weights.put(rep_key.public_key(), Amount::MAX);
+        service
+            .activate_for_test(
+                AecActivateRequest::priority(
+                    block,
+                    BlockPriority::new_test_instance(),
+                    prio_bucket_index(BlockPriority::new_test_instance().balance),
+                    1,
+                ),
+                service.clock.now(),
+            )
+            .unwrap();
+
+        let vote = ReceivedVote::new(
+            Vote::new(&rep_key, UnixMillisTimestamp::new(123), 0, vec![block_hash]).into(),
+            VoteSource::Live,
+            None,
+        );
+
+        let results = service.apply_vote(&vote.clone().into());
+        assert_eq!(results.get(&block_hash), Some(&Ok(())));
+
+        let mut observed_vote_processed = false;
+        let start = std::time::Instant::now();
+
+        while start.elapsed() < Duration::from_secs(5) {
+            match service.delivery.try_recv() {
+                Ok(AecFact::VoteProcessed(processed_vote, voter_weight, per_block_results)) => {
+                    assert_eq!(processed_vote.vote.hashes, vote.vote.hashes);
+                    assert_eq!(voter_weight, Amount::MAX);
+                    assert_eq!(per_block_results.get(&block_hash), Some(&Ok(())));
+                    observed_vote_processed = true;
+                    break;
+                }
+                Ok(
+                    AecFact::ElectionStarted(_, _)
+                    | AecFact::ElectionConfirmed(_)
+                    | AecFact::ElectionEnded(_),
+                ) => {}
+                Ok(other) => panic!("unexpected event: {:?}", std::mem::discriminant(&other)),
+                Err(TryRecvError::Empty) => std::thread::yield_now(),
+                Err(TryRecvError::Disconnected) => break,
+            }
+        }
+
+        assert!(observed_vote_processed);
+    }
+
+    #[test]
+    fn activate_priority_replaces_active_root_via_aec_owned_path() {
+        let service = AecService::new_null();
+        let old_block = SavedBlock::new_test_instance_with_key(1);
+        let new_block = SavedBlock::new_test_instance_with_key(2);
+        let old_root = old_block.qualified_root();
+        let new_root = new_block.qualified_root();
+        let priority = BlockPriority::new_test_instance();
+        let bucket_index = prio_bucket_index(priority.balance);
+
+        service
+            .activate_for_test(
+                AecActivateRequest::priority(
+                    old_block,
+                    priority,
+                    bucket_index,
+                    1,
+                ),
+                service.clock.now(),
+            )
+            .unwrap();
+
+        service
+            .activate(AecActivateRequest::priority(
+                new_block,
+                priority,
+                bucket_index,
+                1,
+            ))
+            .unwrap();
+
+        assert!(!service.is_active_root(&old_root));
+        assert!(service.is_active_root(&new_root));
+    }
+
+    #[test]
+    fn confirmation_active_returns_unconfirmed_roots_without_cloning_elections() {
+        let service = AecService::new_null();
+        let block = SavedBlock::new_test_instance();
+        let root = block.qualified_root();
+
+        service
+            .activate_for_test(
+                AecActivateRequest::priority(
+                    block,
+                    BlockPriority::new_test_instance(),
+                    prio_bucket_index(BlockPriority::new_test_instance().balance),
+                    1,
+                ),
+                service.clock.now(),
+            )
+            .unwrap();
+
+        let result = service.confirmation_active(0);
+
+        assert_eq!(result.unconfirmed_roots, vec![root]);
+        assert_eq!(result.confirmed, 0);
+    }
+
+    #[test]
+    fn confirmation_active_honors_announcement_threshold() {
+        let service = AecService::new_null();
+        let block = SavedBlock::new_test_instance();
+
+        service
+            .activate_for_test(
+                AecActivateRequest::priority(
+                    block,
+                    BlockPriority::new_test_instance(),
+                    prio_bucket_index(BlockPriority::new_test_instance().balance),
+                    1,
+                ),
+                service.clock.now(),
+            )
+            .unwrap();
+
+        let result = service.confirmation_active(1);
+
+        assert!(result.unconfirmed_roots.is_empty());
+        assert_eq!(result.confirmed, 0);
+    }
+
+    #[derive(Clone, Default)]
+    struct StubProcessor {
+        log: Arc<Mutex<Vec<&'static str>>>,
+    }
+
+    impl StubProcessor {
+        fn log(&self) -> Vec<&'static str> {
+            self.log.lock().unwrap().clone()
+        }
+    }
+
+    impl BackpressureEventProcessor<AecFact> for StubProcessor {
+        fn cool_down(&mut self) {}
+
+        fn recovered(&mut self) {
+            self.log.lock().unwrap().push("recovered");
+        }
+
+        fn process(&mut self, _event: AecFact) {
+            self.log.lock().unwrap().push("processed");
+        }
+    }
+}

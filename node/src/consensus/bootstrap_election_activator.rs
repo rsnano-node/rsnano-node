@@ -1,13 +1,13 @@
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 
 use rsnano_types::BlockHash;
 use rsnano_utils::stats::{DetailType, StatType, Stats};
 
-use super::{ActiveElectionsContainer, VoteCache};
+use super::{AecService, VoteCache};
 
 /// Skip passive phase for blocks without cached votes to avoid bootstrap delays
 pub(crate) struct BootstrapElectionActivator {
-    pub active_elections: Arc<RwLock<ActiveElectionsContainer>>,
+    pub aec_service: Arc<AecService>,
     pub vote_cache: Arc<Mutex<VoteCache>>,
     pub stats: Arc<Stats>,
 }
@@ -19,11 +19,7 @@ impl BootstrapElectionActivator {
             return;
         }
 
-        let activated = self
-            .active_elections
-            .write()
-            .unwrap()
-            .transition_active(&hash);
+        let activated = self.aec_service.transition_active(&hash);
 
         if activated {
             self.stats

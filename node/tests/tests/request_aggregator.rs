@@ -699,7 +699,7 @@ fn forked_open() {
     node.process(open0.clone());
     node.confirm(open0.hash());
 
-    assert_timely2(|| node.active.read().unwrap().is_empty());
+    assert_timely2(|| node.active.is_empty());
 
     let vote_tracker = node.vote_generators.track();
 

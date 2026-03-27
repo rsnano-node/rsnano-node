@@ -208,10 +208,6 @@ impl RootContainer {
             .last()
             .map(|i| (i.root.clone(), i.priority.time))
     }
-
-    pub fn find_bucket(&self, root: &QualifiedRoot) -> Option<usize> {
-        self.by_root.get(root).map(|i| i.bucket())
-    }
 }
 
 struct RoundRobinIterator<'a> {

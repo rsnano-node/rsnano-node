@@ -404,6 +404,15 @@ mod tests {
     }
 
     #[test]
+    fn create_unnamed_db() {
+        let path = TempLmdbFile::new();
+        let env = create_lmdb_env(path);
+        env.create_db(None, DatabaseFlags::empty()).unwrap();
+        let result = env.open_db(None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
     fn write_key_value() {
         let path = TempLmdbFile::new();
         let env = create_lmdb_env(path);
@@ -417,7 +426,6 @@ mod tests {
         let result = txn.get(dbi, &[1, 2]).unwrap();
         assert_eq!(result, [3, 4]);
     }
-
     #[test]
     fn can_track_puts() {
         let env = LmdbEnvironment::new_null();

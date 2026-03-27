@@ -1,34 +1,27 @@
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
-use super::{ActiveElectionsContainer, election::ConfirmedElection};
+use super::{AecService, election::ConfirmedElection};
 use crate::cementation::ConfirmingSet;
-use rsnano_nullable_clock::SteadyClock;
 use rsnano_types::{BlockHash, SavedBlock};
 
 pub(crate) struct DependentElectionsConfirmer {
     pub(crate) confirming_set: Arc<ConfirmingSet>,
-    pub(crate) active_elections: Arc<RwLock<ActiveElectionsContainer>>,
-    pub(crate) clock: Arc<SteadyClock>,
+    pub(crate) aec_service: Arc<AecService>,
 }
 
 impl DependentElectionsConfirmer {
     pub fn new_null() -> Self {
         Self {
             confirming_set: Arc::new(ConfirmingSet::new_null()),
-            active_elections: Arc::new(RwLock::new(ActiveElectionsContainer::default())),
-            clock: Arc::new(SteadyClock::new_null()),
+            aec_service: Arc::new(AecService::new_null()),
         }
     }
 
     /// Confirmed blocks might implicitly confirm dependent elections
     pub fn confirm_dependent_elections(&self, confirmed_blocks: &Vec<(SavedBlock, BlockHash)>) {
         let blocks_plus_election = self.blocks_plus_elections(confirmed_blocks);
-        let now = self.clock.now();
-
-        self.active_elections
-            .write()
-            .unwrap()
-            .confirm_dependent_elections(blocks_plus_election, now);
+        self.aec_service
+            .confirm_dependent_elections(blocks_plus_election);
     }
 
     fn blocks_plus_elections(

@@ -1,7 +1,10 @@
 use std::{
     cmp::max,
     collections::HashMap,
-    sync::{Arc, mpsc::TryRecvError},
+    sync::{
+        Arc,
+        mpsc::{self, TryRecvError},
+    },
     time::{Duration, Instant},
 };
 
@@ -12,12 +15,10 @@ use rsnano_ledger::{
 use rsnano_messages::{ConfirmAck, Message, Publish};
 use rsnano_network::{ChannelId, TrafficType};
 use rsnano_node::{
+    NodeEvent,
     block_processing::{BlockContext, BoundedBacklogConfig},
     config::{NodeConfig, NodeFlags},
-    consensus::{
-        AecEvent, FilteredVote, ReceivedVote,
-        election::{ElectionBehavior, VoteType},
-    },
+    consensus::{FilteredVote, ReceivedVote, election::{ElectionBehavior, VoteType}},
 };
 use rsnano_nullable_tcp::get_available_port;
 use rsnano_types::{
@@ -27,7 +28,6 @@ use rsnano_types::{
 use rsnano_utils::{
     BackpressureHandler,
     stats::{DetailType, Direction, StatType},
-    sync::backpressure_channel,
 };
 use test_helpers::{
     System, activate_hashes, assert_never, assert_timely, assert_timely_eq, assert_timely_eq2,
@@ -97,7 +97,8 @@ fn rollback_gap_source() {
 fn vote_by_hash_bundle() {
     // Initialize the test system with one node
     let mut system = System::new();
-    let node = system.make_node();
+    let (tx, rx) = mpsc::sync_channel(128);
+    let node = system.build_node().event_sink(tx).finish();
     let wallet_id = node.wallets.wallet_ids()[0];
 
     // Prepare a vector to hold the blocks
@@ -127,10 +128,6 @@ fn vote_by_hash_bundle() {
 
     assert_timely_eq2(|| node.wallet_reps.lock().unwrap().voting_reps(), 1);
 
-    // Set up an observer to track the maximum number of hashes in a vote
-    let (tx, rx) = backpressure_channel::channel(128);
-    node.vote_processor.add_observer(tx);
-
     // Enqueue vote requests for all the blocks
     for block in &blocks {
         node.vote_generators
@@ -146,7 +143,7 @@ fn vote_by_hash_bundle() {
 
         match rx.try_recv() {
             Ok(e) => {
-                if let AecEvent::VoteProcessed(vote, _, _) = e {
+                if let NodeEvent::VoteProcessed(vote, _) = e {
                     max_hashes = max(max_hashes, vote.hashes.len());
 
                     if max_hashes >= 3 {
@@ -199,8 +196,6 @@ fn confirm_quorum() {
 
     let votes = node1
         .active
-        .read()
-        .unwrap()
         .election_for_root(&send1.qualified_root())
         .unwrap()
         .vote_count();
@@ -280,7 +275,7 @@ fn no_voting() {
         .wait()
         .unwrap();
 
-    assert_timely_eq2(|| node0.active.read().unwrap().len(), 0);
+    assert_timely_eq2(|| node0.active.len(), 0);
     assert_eq!(
         node0
             .stats
@@ -512,8 +507,7 @@ fn fork_multi_flip() {
     node1.insert_into_wallet(&DEV_GENESIS_KEY);
 
     assert_timely2(|| {
-        let aec = node2.active.read().unwrap();
-        if let Some(election) = aec.election_for_root(&send2.qualified_root()) {
+        if let Some(election) = node2.active.election_for_root(&send2.qualified_root()) {
             election.contains_block(&send1.hash())
         } else {
             false
@@ -541,13 +535,12 @@ fn fork_publish() {
     let send2 = fork_lattice.genesis().send(&key2, 100);
     node1.process_active(send1.clone());
     node1.process_active(send2.clone());
-    assert_timely_eq2(|| node1.active.read().unwrap().len(), 1);
+    assert_timely_eq2(|| node1.active.len(), 1);
     assert_timely2(|| node1.is_active_root(&send2.qualified_root()));
     // Wait until the genesis rep activated & makes vote
     assert_timely_eq2(
         || {
-            let aec = node1.active.read().unwrap();
-            if let Some(e) = aec.election_for_root(&send1.qualified_root()) {
+            if let Some(e) = node1.active.election_for_root(&send1.qualified_root()) {
                 e.vote_count()
             } else {
                 0
@@ -557,8 +550,6 @@ fn fork_publish() {
     );
     let votes1 = node1
         .active
-        .read()
-        .unwrap()
         .election_for_root(&send1.qualified_root())
         .unwrap()
         .votes()
@@ -598,8 +589,6 @@ fn fork_publish_inactive() {
     assert_timely_eq2(
         || {
             node.active
-                .read()
-                .unwrap()
                 .election_for_root(&send1.qualified_root())
                 .unwrap()
                 .block_count()
@@ -609,8 +598,6 @@ fn fork_publish_inactive() {
 
     assert_eq!(
         node.active
-            .read()
-            .unwrap()
             .election_for_root(&send1.qualified_root())
             .unwrap()
             .winner()
@@ -647,11 +634,7 @@ fn unlock_search() {
 
     assert_timely2(|| node.balance(&DEV_GENESIS_ACCOUNT) != balance);
 
-    assert_timely_eq(
-        Duration::from_secs(10),
-        || node.active.read().unwrap().len(),
-        0,
-    );
+    assert_timely_eq(Duration::from_secs(10), || node.active.len(), 0);
 
     node.wallets
         .insert_adhoc2(&wallet_id, &key2.raw_key(), true)
@@ -1365,7 +1348,7 @@ fn fork_open() {
         Message::Publish(Publish::new_forward(open1.clone())),
         channel.clone(),
     );
-    assert_timely_eq2(|| node.active.read().unwrap().len(), 1);
+    assert_timely_eq2(|| node.active.len(), 1);
 
     // create 2nd open block, which is a fork of open1 block
     // create the 1st open block to receive send1, which should be regarded as the winner just because it is first
@@ -1380,8 +1363,6 @@ fn fork_open() {
     assert_timely_eq2(
         || {
             node.active
-                .read()
-                .unwrap()
                 .election_for_root(&open2.qualified_root())
                 .unwrap()
                 .block_count()
@@ -1391,8 +1372,6 @@ fn fork_open() {
     assert_eq!(
         open1.hash(),
         node.active
-            .read()
-            .unwrap()
             .election_for_root(&open2.qualified_root())
             .unwrap()
             .winner()
@@ -1461,11 +1440,7 @@ fn online_reps_election() {
     let send1 = lattice.genesis().send(&key, Amount::nano(1000));
 
     node.process_active(send1.clone());
-    assert_timely_eq(
-        Duration::from_secs(5),
-        || node.active.read().unwrap().len(),
-        1,
-    );
+    assert_timely_eq(Duration::from_secs(5), || node.active.len(), 1);
 
     // Process vote for ongoing election
     let vote = Arc::new(Vote::new(
@@ -1614,8 +1589,6 @@ fn fork_election_invalid_block_signature() {
     assert_timely2(|| {
         node1
             .active
-            .read()
-            .unwrap()
             .election_for_root(&send1.qualified_root())
             .unwrap()
             .block_count()
@@ -1624,8 +1597,6 @@ fn fork_election_invalid_block_signature() {
     assert_eq!(
         node1
             .active
-            .read()
-            .unwrap()
             .election_for_root(&send1.qualified_root())
             .unwrap()
             .candidate_blocks()
@@ -1654,13 +1625,13 @@ fn confirm_back() {
     start_election(&node, &send1.hash());
     start_election(&node, &open.hash());
     start_election(&node, &send2.hash());
-    assert_eq!(node.active.read().unwrap().len(), 3);
+    assert_eq!(node.active.len(), 3);
     let vote = Arc::new(Vote::new_final(&DEV_GENESIS_KEY, vec![send2.hash()]));
 
     node.vote_processor_queue
         .enqueue(vote, None, VoteSource::Live, None);
 
-    assert_timely_eq2(|| node.active.read().unwrap().len(), 0);
+    assert_timely_eq2(|| node.active.len(), 0);
 }
 
 // Test that rep_crawler removes unreachable reps from its search results.
@@ -1965,11 +1936,7 @@ fn fork_open_flip() {
     let open1 = node1.process(open1);
     node1.election_schedulers.manual.push(open1.clone());
     assert_timely2(|| node1.is_active_root(&open1.qualified_root()));
-    node1
-        .active
-        .write()
-        .unwrap()
-        .transition_active(&open1.hash());
+    node1.active.transition_active(&open1.hash());
 
     // create node2, with blocks send1 and open2 pre-initialised in the ledger,
     // so that block open1 cannot possibly get in the ledger before open2 via background sync
@@ -1983,14 +1950,10 @@ fn fork_open_flip() {
     assert_timely2(|| node2.block_exists(&open2.hash()));
     node2.election_schedulers.manual.push(open2.clone());
     assert_timely2(|| node2.is_active_root(&open2.qualified_root()));
-    node2
-        .active
-        .write()
-        .unwrap()
-        .transition_active(&open2.hash());
+    node2.active.transition_active(&open2.hash());
 
-    assert_timely_eq2(|| node1.active.read().unwrap().len(), 2);
-    assert_timely_eq2(|| node2.active.read().unwrap().len(), 2);
+    assert_timely_eq2(|| node1.active.len(), 2);
+    assert_timely_eq2(|| node2.active.len(), 2);
 
     // allow node1 to vote and wait for open1 to be confirmed on node1
     node1
@@ -2394,7 +2357,7 @@ fn dependency_graph() {
     start_election(&node, &gen_send1.hash());
     assert_timely(Duration::from_secs(30), || {
         // Not many blocks should be active simultaneously
-        assert!(node.active.read().unwrap().len() < 6);
+        assert!(node.active.len() < 6);
 
         // Ensure that active blocks have their ancestors confirmed
         let error = dependency_graph.iter().any(|entry| {
@@ -2411,7 +2374,7 @@ fn dependency_graph() {
         error || node.ledger.confirmed_count() == node.ledger.block_count()
     });
     assert_eq!(node.ledger.confirmed_count(), node.ledger.block_count());
-    assert_timely2(|| node.active.read().unwrap().len() == 0);
+    assert_timely2(|| node.active.len() == 0);
 }
 
 #[test]
@@ -2429,8 +2392,8 @@ fn fork_keep() {
     let send2 = fork_lattice.genesis().send(&key2, 100);
     node1.process_active(send1.clone());
     node2.process_active(send1.clone());
-    assert_timely_eq2(|| node1.active.read().unwrap().len(), 1);
-    assert_timely_eq2(|| node2.active.read().unwrap().len(), 1);
+    assert_timely_eq2(|| node1.active.len(), 1);
+    assert_timely_eq2(|| node2.active.len(), 1);
     node1.insert_into_wallet(&DEV_GENESIS_KEY);
     // Fill node with forked blocks
     node1.process_active(send2.clone());
@@ -2489,7 +2452,7 @@ fn backlog_scan_election_activation() {
 
     node.process(send.clone());
     assert_timely2(|| node.is_active_hash(&send.hash()));
-    node.active.write().unwrap().cancel(&send.qualified_root());
+    node.active.cancel(&send.qualified_root());
 
     std::thread::sleep(Duration::from_secs(1));
 

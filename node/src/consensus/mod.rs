@@ -43,7 +43,6 @@ pub(crate) use fork_cache::*;
 pub(crate) use fork_cache_updater::*;
 pub(crate) use local_votes_remover::LocalVotesRemover;
 pub use rep_tiers::*;
-pub(crate) use vote_applier::*;
 pub use vote_broadcaster::*;
 pub use vote_cache::{CacheEntry, TopEntry, VoteCache, VoteCacheConfig, VoterEntry};
 pub(crate) use vote_cache_processor::*;

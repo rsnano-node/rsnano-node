@@ -100,7 +100,7 @@ fn stopped_election() {
         node1.inbound_message_queue.put(publish1, channel1);
         assert_timely2(|| node1.is_active_root(&send1.qualified_root()));
         let active = node1.active.clone();
-        spawn_blocking(move || active.write().unwrap().erase(&send1.qualified_root()))
+        spawn_blocking(move || active.erase(&send1.qualified_root()))
             .await
             .unwrap();
 

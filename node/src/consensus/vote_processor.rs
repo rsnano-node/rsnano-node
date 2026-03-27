@@ -12,12 +12,9 @@ use tracing::debug;
 
 use rsnano_network::Channel;
 use rsnano_types::{BlockHash, Vote, VoteError, VoteSource};
-use rsnano_utils::{
-    stats::{DetailType, StatType, Stats},
-    sync::backpressure_channel::Sender,
-};
+use rsnano_utils::stats::{DetailType, StatType, Stats};
 
-use super::{AecEvent, FilteredVote, ReceivedVote, VoteApplier, VoteProcessorQueue};
+use super::{AecService, FilteredVote, ReceivedVote, VoteProcessorQueue};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct VoteProcessorConfig {
@@ -48,7 +45,7 @@ pub type VoteProcessedCallback2 =
 pub struct VoteProcessor {
     threads: Mutex<Vec<JoinHandle<()>>>,
     queue: Arc<VoteProcessorQueue>,
-    vote_applier: VoteApplier,
+    aec_service: Arc<AecService>,
     stats: Arc<Stats>,
     pub total_processed: AtomicU64,
     cool_down: AtomicBool,
@@ -57,21 +54,17 @@ pub struct VoteProcessor {
 impl VoteProcessor {
     pub(crate) fn new(
         queue: Arc<VoteProcessorQueue>,
-        vote_applier: VoteApplier,
+        aec_service: Arc<AecService>,
         stats: Arc<Stats>,
     ) -> Self {
         Self {
             queue,
-            vote_applier,
+            aec_service,
             stats,
             threads: Mutex::new(Vec::new()),
             total_processed: AtomicU64::new(0),
             cool_down: AtomicBool::new(false),
         }
-    }
-
-    pub fn add_observer(&self, sink: Sender<AecEvent>) {
-        self.vote_applier.add_event_sink(sink);
     }
 
     pub fn cool_down(&self) {
@@ -83,7 +76,6 @@ impl VoteProcessor {
     }
 
     pub fn stop(&self) {
-        self.vote_applier.stop();
         self.queue.stop();
 
         let mut handles = Vec::new();
@@ -141,7 +133,7 @@ impl VoteProcessor {
     pub fn vote_blocking(&self, vote: &FilteredVote) -> Result<(), VoteError> {
         let mut result = Err(VoteError::Invalid);
         if vote.validate().is_ok() {
-            let vote_results = self.vote_applier.vote(vote);
+            let vote_results = self.aec_service.apply_vote(vote);
             result = aggregate_vote_results(&vote_results);
         }
 

@@ -1,6 +1,6 @@
 use std::{
     sync::{
-        Arc, Condvar, LazyLock, Mutex, RwLock,
+        Arc, Condvar, LazyLock, Mutex,
         atomic::{AtomicU64, Ordering},
     },
     thread::JoinHandle,
@@ -20,7 +20,7 @@ use super::{
     prio_bucket_index,
 };
 use crate::consensus::{
-    ActiveElectionsContainer,
+    AecActivateRequest, AecInsertError, AecService,
     election_schedulers::priority::{BucketInsertError, Eviction},
 };
 
@@ -31,8 +31,7 @@ pub struct PriorityScheduler {
     buckets: Mutex<Vec<Bucket>>,
     thread: Mutex<Option<JoinHandle<()>>>,
     bucket_stats: BucketStats,
-    clock: Arc<SteadyClock>,
-    aec: Arc<RwLock<ActiveElectionsContainer>>,
+    aec_service: Arc<AecService>,
     activate_successors_listener: OutputListenerMt<SavedBlock>,
     activations_per_bucket: Vec<AtomicU64>,
 }
@@ -41,8 +40,8 @@ impl PriorityScheduler {
     pub(crate) fn new(
         config: PriorityBucketConfig,
         stats: Arc<Stats>,
-        active_elections: Arc<RwLock<ActiveElectionsContainer>>,
-        clock: Arc<SteadyClock>,
+        aec_service: Arc<AecService>,
+        _clock: Arc<SteadyClock>,
     ) -> Self {
         let mut buckets = Vec::with_capacity(prio_bucket_count());
         let mut activations_per_bucket = Vec::with_capacity(prio_bucket_count());
@@ -58,8 +57,7 @@ impl PriorityScheduler {
             buckets: Mutex::new(buckets),
             stats,
             bucket_stats: BucketStats::default(),
-            clock,
-            aec: active_elections,
+            aec_service,
             activate_successors_listener: Default::default(),
             activations_per_bucket,
         }
@@ -210,24 +208,80 @@ impl PriorityScheduler {
 
     fn predicate(&self) -> bool {
         let buckets = self.buckets.lock().unwrap();
-        let aec = self.aec.read().unwrap();
-        buckets.iter().any(|b| b.available(&aec))
+        buckets.iter().enumerate().any(|(bucket_id, bucket)| {
+            let Some(top) = bucket.blocks().next() else {
+                return false;
+            };
+            let state = self.priority_bucket_state(bucket_id, &top.qualified_root());
+            bucket.available(&state)
+        })
     }
 
     fn run_one(&self) {
         self.stats
             .inc(StatType::ElectionScheduler, DetailType::Loop);
 
-        let now = self.clock.now();
         let mut buckets = self.buckets.lock().unwrap();
-        let mut aec = self.aec.write().unwrap();
         let mut inserted = true;
 
         while inserted {
             inserted = false;
-            for bucket in buckets.iter_mut().rev() {
-                bucket.activate(&mut aec, now, &self.bucket_stats);
+            for (bucket_id, bucket) in buckets.iter_mut().enumerate().rev() {
+                inserted |= self.activate_bucket(bucket_id, bucket);
             }
+        }
+    }
+
+    fn priority_bucket_state(
+        &self,
+        bucket_id: usize,
+        candidate_root: &rsnano_types::QualifiedRoot,
+    ) -> crate::consensus::election_schedulers::priority::PriorityBucketState {
+        self.aec_service
+            .priority_bucket_state(bucket_id, candidate_root)
+    }
+
+    fn activate_bucket(&self, bucket_id: usize, bucket: &mut Bucket) -> bool {
+        let Some(top) = bucket.blocks().next() else {
+            return false;
+        };
+
+        let state = self.priority_bucket_state(bucket_id, &top.qualified_root());
+        if !bucket.available(&state) {
+            return false;
+        }
+
+        let (block, priority) = bucket.pop_highest_priority().unwrap();
+        let result = self.aec_service.activate(AecActivateRequest::priority(
+            block,
+            priority,
+            bucket_id,
+            bucket.reserved_elections(),
+        ));
+
+        match result {
+            Ok(_) => {
+                if state.active_len >= bucket.reserved_elections() {
+                    self.bucket_stats.replaced.fetch_add(1, Ordering::Relaxed);
+                }
+                self.bucket_stats
+                    .activate_success
+                    .fetch_add(1, Ordering::Relaxed);
+                true
+            }
+            Err(AecInsertError::RecentlyConfirmed) => {
+                self.bucket_stats
+                    .activate_failed_confirmed
+                    .fetch_add(1, Ordering::Relaxed);
+                false
+            }
+            Err(AecInsertError::Duplicate) => {
+                self.bucket_stats
+                    .activate_failed_duplicate
+                    .fetch_add(1, Ordering::Relaxed);
+                false
+            }
+            Err(AecInsertError::Stopped) => false,
         }
     }
 
@@ -345,16 +399,15 @@ mod tests {
         scheduler.activate_successors(&ledger.any(), &send1);
         scheduler.run_one();
 
-        let aec = scheduler.aec.read().unwrap();
-        assert!(aec.is_active_hash(&send2.hash()));
-        assert!(aec.is_active_hash(&open.hash()));
+        assert!(scheduler.aec_service.is_active_hash(&send2.hash()));
+        assert!(scheduler.aec_service.is_active_hash(&open.hash()));
     }
 
     fn create_test_scheduler() -> PriorityScheduler {
         let config = PriorityBucketConfig::default();
         let stats = Arc::new(Stats::default());
-        let active_elections = Arc::new(RwLock::new(ActiveElectionsContainer::default()));
+        let aec_service = Arc::new(AecService::new_null());
         let clock = Arc::new(SteadyClock::new_null());
-        PriorityScheduler::new(config, stats, active_elections, clock)
+        PriorityScheduler::new(config, stats, aec_service, clock)
     }
 }

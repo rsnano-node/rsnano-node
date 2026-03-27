@@ -5,7 +5,7 @@ mod election_scheduler {
     use rsnano_ledger::test_helpers::UnsavedBlockLatticeBuilder;
     use rsnano_node::{
         config::{NodeConfig, OptimisticSchedulerConfig},
-        consensus::{AecInsertRequest, election::ElectionBehavior},
+        consensus::{AecActivateRequest, election::ElectionBehavior},
     };
     use rsnano_types::{Amount, BlockPriority, DEV_GENESIS_KEY, PrivateKey};
     use test_helpers::{setup_chains, setup_rep};
@@ -143,8 +143,6 @@ mod election_scheduler {
         assert_timely2(|| node.is_active_hash(&block.hash()));
         assert_eq!(
             node.active
-                .read()
-                .unwrap()
                 .election_for_block(&block.hash())
                 .unwrap()
                 .behavior(),
@@ -155,16 +153,13 @@ mod election_scheduler {
         node.confirm(blocks[howmany_blocks - 1].hash());
 
         // Attempt to start priority election for second block
-        let _ = node.active.write().unwrap().insert(
-            AecInsertRequest::new_priority(block.clone(), BlockPriority::MIN),
-            node.steady_clock.now(),
-        );
+        let _ = node
+            .active
+            .activate(AecActivateRequest::priority(block.clone(), BlockPriority::MIN, 0, 1));
 
         // Verify priority transition
         assert_eq!(
             node.active
-                .read()
-                .unwrap()
                 .election_for_block(&block.hash())
                 .unwrap()
                 .behavior(),
