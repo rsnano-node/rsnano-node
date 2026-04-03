@@ -46,6 +46,8 @@ pub struct Election {
     last_final_vote: Option<Timestamp>,
     last_non_final_vote: Option<Timestamp>,
     last_voted_winner: BlockHash,
+    #[cfg(feature = "ledger_snapshots")]
+    has_voted: bool,
 }
 
 impl Election {
@@ -79,6 +81,8 @@ impl Election {
             last_voted_winner: BlockHash::ZERO,
             last_non_final_vote: None,
             last_final_vote: None,
+            #[cfg(feature = "ledger_snapshots")]
+            has_voted: false,
         }
     }
 
@@ -175,9 +179,18 @@ impl Election {
             VoteType::Final => self.last_final_vote = Some(timestamp),
         }
         self.last_voted_winner = self.winner().hash();
+        #[cfg(feature = "ledger_snapshots")]
+        {
+            self.has_voted = true;
+        }
     }
 
     pub fn can_vote(&self, broadcast_interval: Duration, now: Timestamp) -> bool {
+        #[cfg(feature = "ledger_snapshots")]
+        if self.has_voted {
+            return false;
+        }
+
         if self.last_voted_winner != self.winner().hash() {
             return true;
         }
