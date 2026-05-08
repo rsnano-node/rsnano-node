@@ -12,7 +12,7 @@ use super::{
     blocked::BlockedAccounts,
     download_queue::DownloadQueue,
     downloading::DownloadingAccounts,
-    Priority, PriorityDownResult, PriorityUpResult,
+    Priority, PriorityUpResult,
 };
 
 #[derive(Default)]
@@ -91,8 +91,6 @@ pub(crate) struct BootstrapQueueLogic {
 }
 
 impl BootstrapQueueLogic {
-    pub const MAX_FAILS: usize = 3;
-
     pub fn new(config: BootstrapQueueConfig) -> Self {
         Self {
             config,
@@ -142,32 +140,6 @@ impl BootstrapQueueLogic {
         }
 
         self.revision += 1;
-    }
-
-    pub fn priority_down(&mut self, account: &Account) -> PriorityDownResult {
-        let mut result = self.priorities.priority_down(account);
-        match result {
-            PriorityDownResult::Deprioritized(_, new_prio) => {
-                let fails = self.get_fails(account);
-                if fails as f64 > new_prio.as_f64() {
-                    self.remove(account);
-                    result = PriorityDownResult::Removed;
-                } else {
-                    self.download_queue.change_priority(account, new_prio);
-                }
-            }
-            PriorityDownResult::Removed => {
-                self.remove(account);
-            }
-            _ => {}
-        }
-
-        self.revision += 1;
-        result
-    }
-
-    fn get_fails(&self, account: &Account) -> usize {
-        self.fails.get(account).copied().unwrap_or(0)
     }
 
     pub fn remove(&mut self, account: &Account) -> bool {
@@ -682,47 +654,6 @@ mod tests {
             queue.priority(&key.account()),
             Priority::INITIAL + Priority::INCREASE
         );
-    }
-
-    /*
-     * Decreasing priority
-     */
-
-    #[test]
-    fn priority_down_decreases_priority() {
-        let mut queue = BootstrapQueueLogic::default();
-        let account = Account::from(1);
-        queue.enqueue(account);
-
-        queue.priority_down(&account);
-
-        assert_eq!(
-            queue.priority(&account),
-            Priority::INITIAL / Priority::DIVIDE
-        );
-    }
-
-    #[test]
-    fn priority_down_does_nothing_if_account_not_enqueued() {
-        let mut queue = BootstrapQueueLogic::default();
-        let account = Account::from(1);
-
-        queue.priority_down(&account);
-
-        assert_eq!(queue.priority(&account), Priority::ZERO);
-    }
-
-    #[test]
-    fn account_gets_dequeued_if_priority_gets_too_low() {
-        let mut queue = BootstrapQueueLogic::default();
-        let account = Account::from(1);
-        queue.enqueue(account);
-
-        for _ in 0..10 {
-            queue.priority_down(&account);
-        }
-
-        assert!(!queue.contains(&account));
     }
 
     /*

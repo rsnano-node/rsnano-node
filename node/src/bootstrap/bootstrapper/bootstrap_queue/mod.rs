@@ -8,7 +8,7 @@ mod logic;
 mod priority;
 mod stats;
 
-pub use account_priority_tracker::{PriorityDownResult, PriorityUpResult};
+pub use account_priority_tracker::PriorityUpResult;
 pub use logic::{
     BootstrapQueueConfig, BootstrapQueueInfo, BootstrapQueueSnapshot, BootstrappingAccountInfo,
 };
@@ -18,7 +18,7 @@ use logic::BootstrapQueueLogic;
 
 use std::{
     collections::VecDeque,
-    sync::{Mutex, atomic::Ordering::Relaxed},
+    sync::{atomic::Ordering::Relaxed, Mutex},
 };
 
 use rsnano_nullable_clock::SteadyClock;
@@ -74,11 +74,6 @@ impl BootstrapQueue {
     pub fn priority_up(&self, account: &Account) {
         let prio_result = self.logic.lock().unwrap().priority_up(account);
         self.stats.add_prio_set_result(&prio_result);
-    }
-
-    pub fn priority_down(&self, account: &Account) {
-        let result = self.logic.lock().unwrap().priority_down(account);
-        self.stats.add_prio_down_result(&result);
     }
 
     #[cfg(test)]

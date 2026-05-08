@@ -6,7 +6,7 @@ use rsnano_types::BlockType;
 
 use crate::{
     block_processing::{BlockContext, BlockProcessorQueue},
-    bootstrap::bootstrapper::{Priority, bootstrap_queue::BootstrapQueue},
+    bootstrap::bootstrapper::{bootstrap_queue::BootstrapQueue},
 };
 
 /// Inspects a processed block and adjusts the bootstrap state accordingly

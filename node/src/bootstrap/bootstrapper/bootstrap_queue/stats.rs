@@ -1,4 +1,4 @@
-use super::{PriorityDownResult, PriorityUpResult};
+use super::PriorityUpResult;
 use crate::bootstrap::bootstrapper::bootstrap_queue::logic::TrimCount;
 use rsnano_utils::stats::{StatsCollection, StatsSource};
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
@@ -9,7 +9,6 @@ pub(crate) struct BootstrapQueueStats {
     pub upgraded: AtomicU64,
     pub removed: AtomicU64,
     pub remove_failed: AtomicU64,
-    pub deprioritized: AtomicU64,
     pub not_found: AtomicU64,
     pub blocked: AtomicU64,
     pub block_failed: AtomicU64,
@@ -40,14 +39,6 @@ impl BootstrapQueueStats {
         };
     }
 
-    pub fn add_prio_down_result(&self, result: &PriorityDownResult) {
-        match result {
-            PriorityDownResult::Deprioritized(_, _) => self.deprioritized.fetch_add(1, Relaxed),
-            PriorityDownResult::Removed => self.removed.fetch_add(1, Relaxed),
-            PriorityDownResult::AccountNotFound => self.not_found.fetch_add(1, Relaxed),
-        };
-    }
-
     pub fn add_trim_count(&self, trim_count: &TrimCount) {
         if trim_count.download_queue > 0 {
             self.trim_download_queue
@@ -66,7 +57,6 @@ impl StatsSource for BootstrapQueueStats {
         result.insert(KEY, "upgraded", self.upgraded.load(Relaxed));
         result.insert(KEY, "removed", self.removed.load(Relaxed));
         result.insert(KEY, "remove_failed", self.remove_failed.load(Relaxed));
-        result.insert(KEY, "deprioritized", self.deprioritized.load(Relaxed));
         result.insert(KEY, "not_found", self.not_found.load(Relaxed));
         result.insert(KEY, "blocked", self.blocked.load(Relaxed));
         result.insert(KEY, "block_failed", self.block_failed.load(Relaxed));

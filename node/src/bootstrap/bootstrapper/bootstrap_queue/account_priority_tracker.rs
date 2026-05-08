@@ -14,14 +14,6 @@ pub enum PriorityUpResult {
     Unchanged,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum PriorityDownResult {
-    Deprioritized(Priority, Priority),
-    /// The priority got too low, so the account got erased
-    Removed,
-    AccountNotFound,
-}
-
 #[derive(PartialEq, Eq)]
 enum ChangePriorityResult {
     Updated(Priority, Priority),
@@ -72,19 +64,6 @@ impl AccountPriorityTracker {
             ChangePriorityResult::Removed => unreachable!(),
             ChangePriorityResult::Unchanged => PriorityUpResult::Unchanged,
             ChangePriorityResult::NotFound => PriorityUpResult::NotFound,
-        }
-    }
-
-    pub fn priority_down(&mut self, account: &Account) -> PriorityDownResult {
-        let change_result = self.modify_priority(account, |prio| prio / Priority::DIVIDE);
-
-        match change_result {
-            ChangePriorityResult::Updated(old, new) => PriorityDownResult::Deprioritized(old, new),
-            ChangePriorityResult::Removed => PriorityDownResult::Removed,
-            ChangePriorityResult::NotFound => PriorityDownResult::AccountNotFound,
-            ChangePriorityResult::Unchanged => {
-                unreachable!("the account is ether downgraded, removed or not found")
-            }
         }
     }
 
@@ -175,46 +154,6 @@ mod tests {
         }
         assert_eq!(tracker.get(&account), Some(Priority::MAX));
         assert_eq!(tracker.priority_up(&account), PriorityUpResult::Unchanged);
-    }
-
-    /* priority_down */
-
-    #[test]
-    fn priority_down_decreases_priority() {
-        let mut tracker = AccountPriorityTracker::default();
-        let account = Account::from(1);
-        tracker.insert(account, Priority::INITIAL);
-        let result = tracker.priority_down(&account);
-        let expected = Priority::INITIAL / Priority::DIVIDE;
-        assert_eq!(
-            result,
-            PriorityDownResult::Deprioritized(Priority::INITIAL, expected)
-        );
-        assert_eq!(tracker.get(&account), Some(expected));
-    }
-
-    #[test]
-    fn priority_down_returns_not_found_for_unknown_account() {
-        let mut tracker = AccountPriorityTracker::default();
-        assert_eq!(
-            tracker.priority_down(&Account::from(1)),
-            PriorityDownResult::AccountNotFound
-        );
-    }
-
-    #[test]
-    fn priority_down_removes_account_when_below_cutoff() {
-        let mut tracker = AccountPriorityTracker::default();
-        let account = Account::from(1);
-        tracker.insert(account, Priority::INITIAL);
-        let result = loop {
-            let r = tracker.priority_down(&account);
-            if r == PriorityDownResult::Removed {
-                break r;
-            }
-        };
-        assert_eq!(result, PriorityDownResult::Removed);
-        assert!(!tracker.contains(&account));
     }
 
     /* contains / get / len / remove */
