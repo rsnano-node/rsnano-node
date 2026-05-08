@@ -155,7 +155,7 @@ mod tests {
     fn priority_up_upgrades_existing_account() {
         let mut tracker = AccountPriorityTracker::default();
         let account = Account::from(1);
-        tracker.priority_up(&account);
+        tracker.insert(account, Priority::INITIAL);
         let result = tracker.priority_up(&account);
         let expected_new = Priority::INITIAL.increase();
         assert_eq!(
@@ -169,6 +169,7 @@ mod tests {
     fn priority_up_returns_unchanged_at_max() {
         let mut tracker = AccountPriorityTracker::default();
         let account = Account::from(1);
+        tracker.insert(account, Priority::INITIAL);
         for _ in 0..100 {
             tracker.priority_up(&account);
         }
@@ -182,7 +183,7 @@ mod tests {
     fn priority_down_decreases_priority() {
         let mut tracker = AccountPriorityTracker::default();
         let account = Account::from(1);
-        tracker.priority_up_to(&account, Priority::INITIAL);
+        tracker.insert(account, Priority::INITIAL);
         let result = tracker.priority_down(&account);
         let expected = Priority::INITIAL / Priority::DIVIDE;
         assert_eq!(
@@ -224,7 +225,7 @@ mod tests {
         let account = Account::from(1);
         assert!(!tracker.contains(&account));
         assert_eq!(tracker.len(), 0);
-        tracker.priority_up(&account);
+        tracker.insert(account, Priority::INITIAL);
         assert!(tracker.contains(&account));
         assert_eq!(tracker.len(), 1);
     }
@@ -233,7 +234,7 @@ mod tests {
     fn remove_returns_priority_and_erases_account() {
         let mut tracker = AccountPriorityTracker::default();
         let account = Account::from(1);
-        tracker.priority_up(&account);
+        tracker.insert(account, Priority::INITIAL);
         assert_eq!(tracker.remove(&account), Some(Priority::INITIAL));
         assert!(!tracker.contains(&account));
         assert_eq!(tracker.remove(&account), None);

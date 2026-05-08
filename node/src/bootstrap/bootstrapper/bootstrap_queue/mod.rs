@@ -18,7 +18,7 @@ use logic::BootstrapQueueLogic;
 
 use std::{
     collections::VecDeque,
-    sync::{atomic::Ordering::Relaxed, Mutex},
+    sync::{Mutex, atomic::Ordering::Relaxed},
 };
 
 use rsnano_nullable_clock::SteadyClock;
@@ -140,13 +140,19 @@ impl BootstrapQueue {
 
     /// Sets information about the account chain that contains the block hash
     pub fn dependency_update(&self, dependency: &BlockHash, dependency_account: Account) {
-        let mut logic = self.logic.lock().unwrap();
-        let (updated, prio_result) = logic.dependency_update(dependency, dependency_account);
+        let (updated, dep_account_inserted) = self
+            .logic
+            .lock()
+            .unwrap()
+            .dependency_update(dependency, dependency_account);
+
         if updated > 0 {
             self.stats
                 .dependency_update
                 .fetch_add(updated as u64, Relaxed);
-            self.stats.add_prio_set_result(&prio_result);
+        }
+        if dep_account_inserted {
+            self.stats.inserted.fetch_add(1, Relaxed);
         }
     }
 

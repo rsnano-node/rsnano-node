@@ -21,6 +21,10 @@ impl DownloadingAccounts {
         old
     }
 
+    pub fn contains(&self, account: &Account) -> bool {
+        self.by_account.contains_key(account)
+    }
+
     pub fn remove(&mut self, account: &Account) -> bool {
         if let Some(ts) = self.by_account.remove(account) {
             self.by_time.remove(&(ts, *account));

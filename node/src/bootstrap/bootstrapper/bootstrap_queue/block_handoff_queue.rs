@@ -26,6 +26,10 @@ pub(super) struct BlockHandoffQueue {
 }
 
 impl BlockHandoffQueue {
+    pub fn contains(&self, account: &Account) -> bool {
+        self.block_cache.contains_key(account)
+    }
+
     /// Stores downloaded blocks and marks the account as ready to process.
     pub fn enqueue(&mut self, account: Account, blocks: VecDeque<Block>) {
         debug_assert!(!self.block_cache.contains_key(&account));
@@ -148,6 +152,10 @@ impl BlockHandoffQueue {
 
     pub fn processing_len(&self) -> usize {
         self.processing.len()
+    }
+
+    pub fn len(&self) -> usize {
+        self.ready_to_process.len() + self.processing.len()
     }
 
     pub fn cached_block_count(&self) -> usize {

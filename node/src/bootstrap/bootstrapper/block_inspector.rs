@@ -119,7 +119,7 @@ impl BlockInspector {
                         {
                             let dep_account = result.block.account_field().unwrap();
                             if !dep_account.is_zero() {
-                                self.bootstrap_queue.enqueue(dep_account,);
+                                self.bootstrap_queue.enqueue(dep_account);
                             }
                         }
                     }

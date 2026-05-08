@@ -10,8 +10,8 @@ use rsnano_utils::stats::{DetailType, StatType, Stats};
 
 use crate::{
     bootstrap::bootstrapper::{
-        query_tracker::{QueryTracker, RunningQuery},
         AscPullQuerySpec,
+        query_tracker::{QueryTracker, RunningQuery},
     },
     transport::MessageSender,
 };

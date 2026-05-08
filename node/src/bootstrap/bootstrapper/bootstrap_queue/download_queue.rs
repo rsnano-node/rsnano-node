@@ -23,6 +23,10 @@ impl DownloadQueue {
         self.by_account.is_empty()
     }
 
+    pub fn contains(&self, account: &Account) -> bool {
+        self.by_account.contains_key(account)
+    }
+
     pub fn insert(&mut self, account: Account, priority: Priority) {
         let inserted = self
             .by_priority

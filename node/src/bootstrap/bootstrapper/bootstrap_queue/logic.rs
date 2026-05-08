@@ -7,12 +7,12 @@ use rsnano_types::{Account, Block, BlockHash};
 use rsnano_utils::container_info::{ContainerInfo, ContainerInfoProvider};
 
 use super::{
+    Priority, PriorityDownResult, PriorityUpResult,
     account_priority_tracker::AccountPriorityTracker,
     block_handoff_queue::{BlockHandoffQueue, ProcessingFinished},
     blocked::BlockedAccounts,
     download_queue::DownloadQueue,
     downloading::DownloadingAccounts,
-    Priority, PriorityDownResult, PriorityUpResult,
 };
 
 #[derive(Default)]
@@ -228,19 +228,19 @@ impl BootstrapQueueLogic {
         &mut self,
         dependency: &BlockHash,
         dependency_account: Account,
-    ) -> (usize, PriorityUpResult) {
+    ) -> (usize, bool) {
         let updated = self
             .blocked
             .modify_dependency_account(dependency, dependency_account)
             .len();
 
-        let prio_result = if updated > 0 && !self.queue_full() {
-            self.priority_up(&dependency_account)
+        let dep_account_inserted = if updated > 0 && !self.queue_full() {
+            self.enqueue(dependency_account)
         } else {
-            PriorityUpResult::Unchanged
+            false
         };
 
-        (updated, prio_result)
+        (updated, dep_account_inserted)
     }
 
     /// Erase the oldest entries
@@ -389,11 +389,14 @@ impl BootstrapQueueLogic {
     }
 
     pub fn contains(&self, account: &Account) -> bool {
-        self.priorities.contains(account)
+        self.download_queue.contains(account)
+            || self.downloading.contains(account)
+            || self.block_processing.contains(account)
+            || self.blocked.contains(account)
     }
 
     pub fn unblocked_count(&self) -> usize {
-        self.priorities.len() - self.blocked.len()
+        self.download_queue.len() + self.downloading.len() + self.block_processing.len()
     }
 
     pub fn snapshot(&self, limit: usize, filter: Option<Account>) -> BootstrapQueueSnapshot {
@@ -601,6 +604,7 @@ mod tests {
         let account = Account::from(1);
         let prio = Priority::new(10.0);
 
+        queue.enqueue(account);
         queue.priority_up_to(&account, prio);
 
         assert!(queue.contains(&account));
@@ -630,9 +634,10 @@ mod tests {
     fn priority_up_cant_reduce_the_priority() {
         let mut queue = BootstrapQueueLogic::default();
         let account = Account::from(1);
-        queue.priority_up_to(&account, Priority::new(2.0));
+        queue.enqueue(account);
+        queue.priority_up_to(&account, Priority::new(3.0));
         queue.priority_up_to(&account, Priority::new(1.0));
-        assert_eq!(queue.priority(&account), Priority::new(2.0));
+        assert_eq!(queue.priority(&account), Priority::new(3.0));
     }
 
     /*
@@ -644,6 +649,7 @@ mod tests {
         let mut queue = BootstrapQueueLogic::default();
         let account = Account::from(1);
 
+        queue.enqueue(account);
         for _ in 0..100 {
             queue.priority_up(&account);
         }
@@ -684,7 +690,7 @@ mod tests {
     fn priority_down_decreases_priority() {
         let mut queue = BootstrapQueueLogic::default();
         let account = Account::from(1);
-        queue.priority_up_to(&account, Priority::INITIAL);
+        queue.enqueue(account);
 
         queue.priority_down(&account);
 
@@ -708,7 +714,7 @@ mod tests {
     fn account_gets_dequeued_if_priority_gets_too_low() {
         let mut queue = BootstrapQueueLogic::default();
         let account = Account::from(1);
-        queue.priority_up_to(&account, Priority::INITIAL);
+        queue.enqueue(account);
 
         for _ in 0..10 {
             queue.priority_down(&account);
@@ -773,6 +779,7 @@ mod tests {
         let key = PrivateKey::from(1);
         let hash = BlockHash::from(2);
         let priority = Priority::new(99.0);
+        queue.enqueue(key.account());
         queue.priority_up_to(&key.account(), priority);
         make_blocked_account(&mut queue, &key, hash);
 
@@ -790,8 +797,8 @@ mod tests {
         let mut queue = BootstrapQueueLogic::default();
         let account1 = Account::from(1);
         let account2 = Account::from(2);
-        queue.priority_up_to(&account1, Priority::INITIAL);
-        queue.priority_up_to(&account2, Priority::INITIAL);
+        queue.enqueue(account1);
+        queue.enqueue(account2);
         let removed = queue.remove(&account1);
         assert!(removed);
         assert!(!queue.contains(&account1));
@@ -809,7 +816,7 @@ mod tests {
     fn next_priority() {
         let mut queue = BootstrapQueueLogic::default();
         let account = Account::from(1);
-        queue.priority_up_to(&account, Priority::INITIAL);
+        queue.enqueue(account);
         let (next_account, next_prio) = queue.next_download_target().unwrap();
         assert_eq!(next_account, account);
         assert_eq!(next_prio, Priority::INITIAL);
@@ -869,8 +876,8 @@ mod tests {
     #[test]
     fn container_info() {
         let mut queue = BootstrapQueueLogic::default();
-        queue.priority_up_to(&Account::from(1), Priority::INITIAL);
-        queue.priority_up_to(&Account::from(2), Priority::INITIAL);
+        queue.enqueue(Account::from(1));
+        queue.enqueue(Account::from(2));
         let info = queue.container_info();
         assert_eq!(info.leaf("download_queue"), Some(2));
         assert_eq!(info.leaf("blocked"), Some(0));
@@ -951,8 +958,8 @@ mod tests {
         make_blocked_account(&mut queue, &key, dependency);
         queue.dependency_update(&dependency, dependency_account);
 
-        queue.priority_up_to(&Account::from(9999), Priority::INITIAL);
-        queue.priority_up_to(&Account::from(8888), Priority::INITIAL);
+        queue.enqueue(Account::from(9999));
+        queue.enqueue(Account::from(8888));
 
         let inserted = queue.sync_dependencies();
 
@@ -970,8 +977,8 @@ mod tests {
         let downloading = Account::from(2);
         let now = Timestamp::new_test_instance();
 
-        queue.priority_up_to(&queued, Priority::INITIAL);
-        queue.priority_up_to(&downloading, Priority::INITIAL);
+        queue.enqueue(queued);
+        queue.enqueue(downloading);
         queue.download_started(&downloading, now);
 
         let snap = queue.snapshot(10, None);
@@ -1010,7 +1017,7 @@ mod tests {
             ..StateBlockArgs::new_test_instance()
         }
         .into();
-        queue.priority_up_to(&account, Priority::INITIAL);
+        queue.enqueue(account);
         queue.download_started(&account, blocked_at);
         queue.download_finished(&account, [receive].into());
         let next = queue.take_next_block_for_processing().unwrap();

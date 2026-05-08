@@ -1,8 +1,8 @@
 use std::{
     collections::VecDeque,
     sync::{
-        atomic::{AtomicU64, Ordering::Relaxed},
         Arc,
+        atomic::{AtomicU64, Ordering::Relaxed},
     },
 };
 
@@ -10,9 +10,9 @@ use rsnano_messages::BlocksAckPayload;
 use rsnano_utils::stats::{StatsCollection, StatsSource};
 
 use crate::bootstrap::bootstrapper::{
+    VerifyResult,
     bootstrap_queue::{BootstrapQueue, Priority},
     query_tracker::{QueryType, RunningQuery},
-    VerifyResult,
 };
 
 pub(crate) struct BlockAckProcessor {

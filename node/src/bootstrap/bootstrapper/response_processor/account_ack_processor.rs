@@ -5,8 +5,8 @@ use crate::bootstrap::bootstrapper::{
     bootstrap_queue::BootstrapQueue, query_tracker::RunningQuery,
 };
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
     Arc,
+    atomic::{AtomicU64, Ordering},
 };
 
 pub(crate) struct AccountAckProcessor {
@@ -64,7 +64,6 @@ impl StatsSource for AccountAckStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bootstrap::bootstrapper::Priority;
     use rsnano_types::{Account, Block, BlockHash, PrivateKey, StateBlockArgs};
 
     #[test]

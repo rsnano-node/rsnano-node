@@ -73,7 +73,7 @@ impl<'a> FrontierWorker<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bootstrap::bootstrapper::{frontier_scan::stats::FrontierScanStats, Priority};
+    use crate::bootstrap::bootstrapper::{Priority, frontier_scan::stats::FrontierScanStats};
     use rsnano_ledger::Ledger;
     use rsnano_types::{Account, AccountInfo, BlockHash};
     use std::sync::Arc;
@@ -113,7 +113,7 @@ mod tests {
         worker.process(vec![Frontier::new(account, BlockHash::from(3))]);
 
         assert_eq!(bootstrap_queue.info().download_queue, 1);
-        assert_eq!(bootstrap_queue.priority(&account), Priority::CUTOFF);
+        assert_eq!(bootstrap_queue.priority(&account), Priority::INITIAL);
         assert_eq!(stats2.outdated_accounts_found.load(Relaxed), 1);
         assert_eq!(stats2.processed_frontiers.load(Relaxed), 1);
     }

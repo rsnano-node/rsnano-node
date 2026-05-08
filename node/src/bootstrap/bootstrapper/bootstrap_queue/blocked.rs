@@ -234,7 +234,6 @@ impl BlockedAccounts {
         }
     }
 
-    #[cfg(test)]
     pub fn contains(&self, account: &Account) -> bool {
         self.by_account.contains_key(account)
     }
