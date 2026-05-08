@@ -7,12 +7,12 @@ use rsnano_types::{Account, Block, BlockHash};
 use rsnano_utils::container_info::{ContainerInfo, ContainerInfoProvider};
 
 use super::{
-    Priority, PriorityDownResult, PriorityUpResult,
     account_priority_tracker::AccountPriorityTracker,
     block_handoff_queue::{BlockHandoffQueue, ProcessingFinished},
     blocked::BlockedAccounts,
     download_queue::DownloadQueue,
     downloading::DownloadingAccounts,
+    Priority, PriorityDownResult, PriorityUpResult,
 };
 
 #[derive(Default)]
@@ -69,6 +69,7 @@ impl Default for BootstrapQueueConfig {
     }
 }
 
+#[derive(Default)]
 pub(crate) struct TrimCount {
     pub download_queue: usize,
     pub blocked: usize,
@@ -106,6 +107,16 @@ impl BootstrapQueueLogic {
         }
     }
 
+    pub fn enqueue(&mut self, account: Account) -> bool {
+        let prio = Priority::INITIAL;
+        if self.priorities.insert(account, prio) {
+            self.download_queue.insert(account, prio);
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn priority_up(&mut self, account: &Account) -> PriorityUpResult {
         let result = self.priorities.priority_up(account);
         self.handle_priority_up_result(account, &result);
@@ -124,9 +135,6 @@ impl BootstrapQueueLogic {
 
     fn handle_priority_up_result(&mut self, account: &Account, result: &PriorityUpResult) {
         match result {
-            PriorityUpResult::Inserted(priority) => {
-                self.download_queue.insert(*account, *priority);
-            }
             PriorityUpResult::Upgraded(_, new_prio) => {
                 self.download_queue.change_priority(account, *new_prio);
             }
@@ -179,7 +187,7 @@ impl BootstrapQueueLogic {
     }
 
     pub fn block(&mut self, block_hash: &BlockHash, dependency: BlockHash, now: Timestamp) -> bool {
-        if let Some(account) = self.block_processing.processing_failed(&block_hash) {
+        if let Some(account) = self.block_processing.suspend(&block_hash) {
             self.blocked.insert(account, dependency, now);
             self.revision += 1;
             true
@@ -194,8 +202,12 @@ impl BootstrapQueueLogic {
         }
         let first_hash = self.block_processing.resume(account);
         if first_hash.is_none() {
-            let priority = self.priorities.get(&account).unwrap();
-            self.download_queue.insert(account, priority);
+            let priority = self.priority(&account);
+            if priority > Priority::CUTOFF {
+                self.download_queue.insert(account, priority);
+            } else {
+                self.priorities.remove(&account);
+            }
         }
 
         self.revision += 1;
@@ -284,20 +296,28 @@ impl BootstrapQueueLogic {
         }
 
         if blocks.is_empty() {
-            let fails = self.fails.entry(*account).or_default();
-            *fails += 1;
-            if *fails >= Self::MAX_FAILS {
-                self.remove(account);
-            } else {
-                let priority = self.priorities.get(account).unwrap();
-                self.download_queue.insert(*account, priority);
-            }
+            //let fails = self.fails.entry(*account).or_default();
+            //*fails += 1;
+            //if *fails >= Self::MAX_FAILS {
+            //    self.remove(account);
+            //} else {
+            //    let priority = self.priorities.get(account).unwrap();
+            //    self.download_queue.insert(*account, priority);
+            //}
         } else {
-            self.fails.remove(account);
+            //self.fails.remove(account);
             self.block_processing.enqueue(*account, blocks);
         }
 
         true
+    }
+
+    pub fn remove_from_download_queue(&mut self, account: &Account) {
+        if self.block_processing.has_blocks_for(account) {
+            self.priorities.remove(account);
+        } else {
+            self.remove(account);
+        }
     }
 
     pub fn reprocess(&mut self, block_hash: &BlockHash) -> bool {
@@ -314,8 +334,11 @@ impl BootstrapQueueLogic {
         };
 
         if next_block_hash.is_none() {
-            let priority = self.priorities.get(&account).unwrap();
-            self.download_queue.insert(account, priority);
+            let priority = self.priorities.get(&account).unwrap_or(Priority::ZERO);
+            if priority > Priority::CUTOFF {
+                self.download_queue.insert(account, priority);
+            } else {
+            }
         }
         true
     }
@@ -458,13 +481,13 @@ impl BootstrapQueueLogic {
     fn iter_downloading(&self) -> impl Iterator<Item = (Account, Priority)> + '_ {
         self.downloading
             .iter_accounts()
-            .map(|account| (*account, self.priorities.get(account).unwrap()))
+            .map(|account| (*account, self.priority(account)))
     }
 
     fn iter_blocked(&self) -> impl Iterator<Item = (Account, Priority)> + '_ {
         self.blocked
             .iter_by_timestamp()
-            .map(|account| (*account, self.priorities.get(account).unwrap()))
+            .map(|account| (*account, self.priority(account)))
     }
 
     fn queue_full(&self) -> bool {
@@ -481,7 +504,6 @@ impl BootstrapQueueLogic {
 
     /// Accounts in the ledger but not in priority list are assumed priority 1.0f
     /// Blocked accounts are assumed priority 0.0f
-    #[cfg(test)]
     pub fn priority(&self, account: &Account) -> Priority {
         self.priorities.get(account).unwrap_or(Priority::ZERO)
     }
@@ -509,7 +531,7 @@ impl BootstrapQueueLogic {
             .remove_requests_older_than(now - Duration::from_secs(15));
 
         while let Some(account) = self.downloading.pop_timeout(now) {
-            let priority = self.priorities.get(&account).unwrap();
+            let priority = self.priority(&account);
             self.download_queue.insert(account, priority);
         }
         self.revision += 1;
@@ -632,14 +654,7 @@ mod tests {
     #[test]
     fn zero_account_cant_be_prioritized() {
         let mut queue = BootstrapQueueLogic::default();
-        assert_eq!(
-            queue.priority_up(&Account::ZERO),
-            PriorityUpResult::InvalidAccount
-        );
-        assert_eq!(
-            queue.priority_up_to(&Account::ZERO, Priority::INITIAL),
-            PriorityUpResult::InvalidAccount
-        );
+        assert!(!queue.enqueue(Account::ZERO),);
         assert_eq!(queue.info().blocked, 0);
         assert_eq!(queue.info().download_queue, 0);
     }

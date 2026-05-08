@@ -5,8 +5,8 @@ use crate::bootstrap::bootstrapper::{
     bootstrap_queue::BootstrapQueue, query_tracker::RunningQuery,
 };
 use std::sync::{
-    Arc,
     atomic::{AtomicU64, Ordering},
+    Arc,
 };
 
 pub(crate) struct AccountAckProcessor {
@@ -109,7 +109,7 @@ mod tests {
             ..AccountInfoAckPayload::new_test_instance()
         };
 
-        queue.priority_up_to(&blocked_account, Priority::INITIAL);
+        queue.enqueue(blocked_account);
         queue.download_started(&blocked_account);
         queue.download_finished(&blocked_account, [receive].into());
         let next = queue.take_next_block_for_processing().unwrap();

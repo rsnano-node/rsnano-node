@@ -18,7 +18,7 @@ use logic::BootstrapQueueLogic;
 
 use std::{
     collections::VecDeque,
-    sync::{Mutex, atomic::Ordering::Relaxed},
+    sync::{atomic::Ordering::Relaxed, Mutex},
 };
 
 use rsnano_nullable_clock::SteadyClock;
@@ -28,6 +28,7 @@ use rsnano_utils::{
     stats::{StatsCollection, StatsSource},
 };
 
+use crate::bootstrap::bootstrapper::bootstrap_queue::logic::TrimCount;
 use stats::BootstrapQueueStats;
 
 pub(crate) struct BootstrapQueue {
@@ -54,28 +55,25 @@ impl BootstrapQueue {
         }
     }
 
-    pub fn priority_up_to(&self, account: &Account, new_priority: Priority) {
-        let prio_result;
-        let trim_count;
+    pub fn enqueue(&self, account: Account) {
+        let inserted;
+        let mut trim_count = TrimCount::default();
         {
             let mut logic = self.logic.lock().unwrap();
-            prio_result = logic.priority_up_to(account, new_priority);
-            trim_count = logic.trim_overflow();
+            inserted = logic.enqueue(account);
+            if inserted {
+                trim_count = logic.trim_overflow();
+            }
         }
-        self.stats.add_prio_set_result(&prio_result);
-        self.stats.add_trim_count(&trim_count);
+        if inserted {
+            self.stats.inserted.fetch_add(1, Relaxed);
+            self.stats.add_trim_count(&trim_count);
+        }
     }
 
     pub fn priority_up(&self, account: &Account) {
-        let prio_result;
-        let trim_count;
-        {
-            let mut logic = self.logic.lock().unwrap();
-            prio_result = logic.priority_up(account);
-            trim_count = logic.trim_overflow();
-        }
+        let prio_result = self.logic.lock().unwrap().priority_up(account);
         self.stats.add_prio_set_result(&prio_result);
-        self.stats.add_trim_count(&trim_count);
     }
 
     pub fn priority_down(&self, account: &Account) {
@@ -196,6 +194,13 @@ impl BootstrapQueue {
         } else {
             self.stats.download_finished_failed.fetch_add(1, Relaxed);
         }
+    }
+
+    pub fn remove_from_download_queue(&self, account: &Account) {
+        self.logic
+            .lock()
+            .unwrap()
+            .remove_from_download_queue(account);
     }
 
     pub fn processing_finished(&self, block_hash: &BlockHash) {

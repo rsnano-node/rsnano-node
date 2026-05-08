@@ -65,7 +65,6 @@ impl BlockInspector {
 
         match &result.status {
             Ok(()) => {
-                let source = result.source;
                 let saved_block = result.saved_block.as_ref().unwrap();
                 self.bootstrap_queue
                     .processing_finished(&saved_block.hash());
@@ -75,18 +74,14 @@ impl BlockInspector {
                 // TODO: do this inside processing_finished
                 self.bootstrap_queue.unblock(account);
 
-                // Progress blocks from live traffic don't need further bootstrapping
-                if source == BlockSource::Bootstrap {
-                    // TODO: do this inside processing_finished
-                    self.bootstrap_queue.priority_up(&account);
-                }
+                // TODO: do this inside processing_finished
+                self.bootstrap_queue.priority_up(&account);
 
                 if let Some(destination) = saved_block.destination()
                     && !destination.is_zero()
                 {
                     self.bootstrap_queue.unblock(destination);
-                    self.bootstrap_queue
-                        .priority_up_to(&destination, Priority::INITIAL);
+                    self.bootstrap_queue.enqueue(destination);
                 }
             }
             Err(error) => {
@@ -124,8 +119,7 @@ impl BlockInspector {
                         {
                             let dep_account = result.block.account_field().unwrap();
                             if !dep_account.is_zero() {
-                                self.bootstrap_queue
-                                    .priority_up_to(&dep_account, Priority::INITIAL);
+                                self.bootstrap_queue.enqueue(dep_account,);
                             }
                         }
                     }

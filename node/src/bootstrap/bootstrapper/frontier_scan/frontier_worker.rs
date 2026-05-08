@@ -42,10 +42,7 @@ impl<'a> FrontierWorker<'a> {
         self.stats2.add(&outdated);
 
         for account in &outdated.accounts {
-            // Use lowest possible priority here, because an account found by the frontier scan is
-            // probably not an account that need immediate bootstrapping
-            self.bootstrap_queue
-                .priority_up_to(account, Priority::CUTOFF);
+            self.bootstrap_queue.enqueue(*account);
         }
     }
 
@@ -76,7 +73,7 @@ impl<'a> FrontierWorker<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bootstrap::bootstrapper::{Priority, frontier_scan::stats::FrontierScanStats};
+    use crate::bootstrap::bootstrapper::{frontier_scan::stats::FrontierScanStats, Priority};
     use rsnano_ledger::Ledger;
     use rsnano_types::{Account, AccountInfo, BlockHash};
     use std::sync::Arc;

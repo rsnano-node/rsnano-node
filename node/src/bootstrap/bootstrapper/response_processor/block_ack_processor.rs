@@ -1,8 +1,8 @@
 use std::{
     collections::VecDeque,
     sync::{
-        Arc,
         atomic::{AtomicU64, Ordering::Relaxed},
+        Arc,
     },
 };
 
@@ -10,9 +10,9 @@ use rsnano_messages::BlocksAckPayload;
 use rsnano_utils::stats::{StatsCollection, StatsSource};
 
 use crate::bootstrap::bootstrapper::{
-    VerifyResult,
-    bootstrap_queue::BootstrapQueue,
+    bootstrap_queue::{BootstrapQueue, Priority},
     query_tracker::{QueryType, RunningQuery},
+    VerifyResult,
 };
 
 pub(crate) struct BlockAckProcessor {
@@ -55,6 +55,7 @@ impl BlockAckProcessor {
             .fetch_add(response.blocks().len() as u64, Relaxed);
 
         let mut blocks = response.take_blocks();
+        let is_end = blocks.len() < query.count;
 
         if query.query_type == QueryType::BlocksByHash {
             // Avoid re-processing the block we already have
@@ -63,13 +64,18 @@ impl BlockAckProcessor {
 
         self.bootstrap_queue
             .download_finished(&query.account, blocks);
+        if is_end {
+            self.bootstrap_queue
+                .remove_from_download_queue(&query.account)
+        }
     }
 
     fn process_empty_response(&self, query: &RunningQuery) {
         self.stats.nothing_new.fetch_add(1, Relaxed);
         self.bootstrap_queue
             .download_finished(&query.account, VecDeque::new());
-        self.bootstrap_queue.priority_down(&query.account);
+        self.bootstrap_queue
+            .remove_from_download_queue(&query.account)
     }
 }
 

@@ -10,8 +10,8 @@ use rsnano_utils::stats::{DetailType, StatType, Stats};
 
 use crate::{
     bootstrap::bootstrapper::{
-        AscPullQuerySpec,
         query_tracker::{QueryTracker, RunningQuery},
+        AscPullQuerySpec,
     },
     transport::MessageSender,
 };
@@ -138,7 +138,7 @@ mod tests {
 
         let spec = AscPullQuerySpec::new_test_instance();
         let bootstrap_queue = Arc::new(BootstrapQueue::new_null());
-        bootstrap_queue.priority_up(&spec.account);
+        bootstrap_queue.enqueue(spec.account);
 
         fixture.query_sender.send(spec.clone());
 

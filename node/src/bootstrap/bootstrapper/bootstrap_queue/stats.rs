@@ -7,7 +7,6 @@ use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 pub(crate) struct BootstrapQueueStats {
     pub inserted: AtomicU64,
     pub upgraded: AtomicU64,
-    pub invalid_account: AtomicU64,
     pub removed: AtomicU64,
     pub remove_failed: AtomicU64,
     pub deprioritized: AtomicU64,
@@ -35,9 +34,8 @@ pub(crate) struct BootstrapQueueStats {
 impl BootstrapQueueStats {
     pub fn add_prio_set_result(&self, result: &PriorityUpResult) {
         match result {
-            PriorityUpResult::Inserted(_) => self.inserted.fetch_add(1, Relaxed),
+            PriorityUpResult::NotFound => self.not_found.fetch_add(1, Relaxed),
             PriorityUpResult::Upgraded(_, _) => self.upgraded.fetch_add(1, Relaxed),
-            PriorityUpResult::InvalidAccount => self.invalid_account.fetch_add(1, Relaxed),
             PriorityUpResult::Unchanged => 0,
         };
     }
@@ -66,7 +64,6 @@ impl StatsSource for BootstrapQueueStats {
     fn collect_stats(&self, result: &mut StatsCollection) {
         result.insert(KEY, "inserted", self.inserted.load(Relaxed));
         result.insert(KEY, "upgraded", self.upgraded.load(Relaxed));
-        result.insert(KEY, "invalid_account", self.invalid_account.load(Relaxed));
         result.insert(KEY, "removed", self.removed.load(Relaxed));
         result.insert(KEY, "remove_failed", self.remove_failed.load(Relaxed));
         result.insert(KEY, "deprioritized", self.deprioritized.load(Relaxed));

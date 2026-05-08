@@ -41,12 +41,16 @@ impl BlockHandoffQueue {
     /// Removes the account from the active tracking sets (ready_to_process / processing)
     /// while keeping its blocks in the cache. Used when blocking an account that already
     /// has cached blocks, so those blocks survive until the account is unblocked.
-    pub fn suspend(&mut self, account: &Account) {
-        if let Some(hash) = self.first_block_hash(account) {
-            if self.ready_to_process.remove(&hash).is_none() {
-                self.processing.remove(&hash);
-            }
+    pub fn suspend(&mut self, hash: &BlockHash) -> Option<Account> {
+        let mut account = self.ready_to_process.remove(&hash);
+        if account.is_none() {
+            account = self.processing.remove(&hash);
         }
+        account
+    }
+
+    pub fn has_blocks_for(&self, account: &Account) -> bool {
+        self.block_cache.contains_key(account)
     }
 
     pub fn processing(&self) -> Vec<BlockHash> {
@@ -110,7 +114,12 @@ impl BlockHandoffQueue {
     }
 
     pub fn processing_failed(&mut self, block_hash: &BlockHash) -> Option<Account> {
-        self.processing.remove(block_hash)
+        if let Some(account) = self.processing.remove(block_hash) {
+            self.block_cache.remove(&account);
+            Some(account)
+        } else {
+            None
+        }
     }
 
     pub fn reprocess(&mut self, block_hash: &BlockHash) -> bool {
@@ -124,12 +133,11 @@ impl BlockHandoffQueue {
     /// Removes all blocks for the account from all internal structures.
     /// Returns the number of removed (discarded) blocks.
     pub fn remove(&mut self, account: &Account) -> usize {
-        self.suspend(account);
-        let count = self
-            .block_cache
-            .remove(account)
-            .map(|b| b.len())
-            .unwrap_or(0);
+        let Some(blocks) = self.block_cache.remove(account) else {
+            return 0;
+        };
+        self.suspend(&blocks.front().unwrap().hash());
+        let count = blocks.len();
         self.cached_block_count -= count;
         count
     }
