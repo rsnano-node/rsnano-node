@@ -7,12 +7,12 @@ use rsnano_types::{Account, Block, BlockHash};
 use rsnano_utils::container_info::{ContainerInfo, ContainerInfoProvider};
 
 use super::{
-    Priority, PriorityDownResult, PriorityUpResult,
     account_priority_tracker::AccountPriorityTracker,
     block_handoff_queue::{BlockHandoffQueue, ProcessingFinished},
     blocked::BlockedAccounts,
     download_queue::DownloadQueue,
     downloading::DownloadingAccounts,
+    Priority, PriorityDownResult, PriorityUpResult,
 };
 
 #[derive(Default)]
@@ -108,13 +108,13 @@ impl BootstrapQueueLogic {
     }
 
     pub fn enqueue(&mut self, account: Account) -> bool {
-        let prio = Priority::INITIAL;
-        if self.priorities.insert(account, prio) {
-            self.download_queue.insert(account, prio);
-            true
-        } else {
-            false
+        if account.is_zero() || self.contains(&account) {
+            return false;
         }
+        let prio = Priority::INITIAL;
+        self.priorities.insert(account, prio);
+        self.download_queue.insert(account, prio);
+        true
     }
 
     pub fn priority_up(&mut self, account: &Account) -> PriorityUpResult {
@@ -535,7 +535,9 @@ impl BootstrapQueueLogic {
 
         while let Some(account) = self.downloading.pop_timeout(now) {
             let priority = self.priority(&account);
-            self.download_queue.insert(account, priority);
+            if priority > Priority::CUTOFF {
+                self.download_queue.insert(account, priority);
+            }
         }
         self.revision += 1;
         decayed_blocks
