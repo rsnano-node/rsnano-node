@@ -6,7 +6,7 @@ fn wallet_export() {
     let mut system = System::new();
     let node = system.make_node();
 
-    let server = setup_rpc_client_and_server(node.clone(), false);
+    let server = setup_rpc_client_and_server(node.clone(), true);
 
     let wallet = WalletId::random();
     node.wallets.create(wallet);

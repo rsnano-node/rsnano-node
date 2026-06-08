@@ -8,7 +8,7 @@ fn sign() {
     let mut system = System::new();
     let node = system.make_node();
 
-    let server = setup_rpc_client_and_server(node.clone(), false);
+    let server = setup_rpc_client_and_server(node.clone(), true);
 
     let key = rsnano_types::PrivateKey::new();
 
@@ -50,7 +50,7 @@ fn sign_without_key() {
     let mut system = System::new();
     let node = system.make_node();
 
-    let server = setup_rpc_client_and_server(node.clone(), false);
+    let server = setup_rpc_client_and_server(node.clone(), true);
 
     let mut lattice = UnsavedBlockLatticeBuilder::new();
     let send = lattice

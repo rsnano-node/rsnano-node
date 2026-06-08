@@ -210,6 +210,7 @@ fn requires_control(command: &RpcCommand) -> bool {
         | RpcCommand::SearchReceivable(_)
         | RpcCommand::SearchReceivableAll
         | RpcCommand::Send(_)
+        | RpcCommand::Sign(_)
         | RpcCommand::Stop
         | RpcCommand::UncheckedClear
         | RpcCommand::Unopened(_)
@@ -223,6 +224,7 @@ fn requires_control(command: &RpcCommand) -> bool {
         | RpcCommand::WalletRepresentativeSet(_)
         | RpcCommand::WalletReceivable(_)
         | RpcCommand::WalletRepublish(_)
+        | RpcCommand::WalletExport(_)
         | RpcCommand::WalletWorkGet(_)
         | RpcCommand::WorkGenerate(_)
         | RpcCommand::WorkCancel(_)

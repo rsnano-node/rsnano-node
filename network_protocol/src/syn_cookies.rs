@@ -8,7 +8,6 @@ use std::{
 use rand::RngExt;
 
 use rsnano_messages::Cookie;
-use rsnano_types::{Account, Signature};
 use rsnano_utils::container_info::{ContainerInfo, ContainerInfoProvider};
 
 /// Node ID cookies for node ID handshakes
@@ -53,27 +52,6 @@ impl SynCookies {
         } else {
             None
         }
-    }
-
-    // Returns `false` if invalid, `true` if valid
-    // Also removes the syn cookie from the store if valid
-    pub fn validate(
-        &self,
-        endpoint: &SocketAddrV6,
-        node_id: &Account,
-        signature: &Signature,
-    ) -> anyhow::Result<()> {
-        let ip_addr = endpoint.ip();
-        let mut lock = self.data.lock().unwrap();
-        if let Some(info) = lock.cookies.get(endpoint) {
-            node_id
-                .as_key()
-                .verify(&info.cookie, signature)
-                .map_err(|_| anyhow!("Invalid signature"))?;
-            lock.cookies.remove(endpoint);
-            lock.dec_cookie_count(*ip_addr);
-        }
-        Ok(())
     }
 
     pub fn purge(&self, cutoff: Duration) {
