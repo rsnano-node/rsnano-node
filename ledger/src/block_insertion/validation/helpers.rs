@@ -1,9 +1,10 @@
 use rsnano_types::{
-    AccountInfo, Amount, Block, BlockBase, BlockDetails, BlockHash, BlockSideband, Epoch,
+    AccountInfo, Amount, Block, BlockBase, BlockDetails, BlockHash, BlockSideband, Epoch, Epochs,
     PendingInfo, PendingKey, PublicKey, StateBlock,
 };
 
 use super::BlockValidator;
+use std::cmp::Ordering;
 
 impl<'a> BlockValidator<'a> {
     pub(crate) fn account_exists(&self) -> bool {
@@ -33,23 +34,12 @@ impl<'a> BlockValidator<'a> {
     }
 
     pub(crate) fn is_receive(&self) -> bool {
-        match self.block {
-            Block::LegacyReceive(_) | Block::LegacyOpen(_) => true,
-            Block::State(state_block) => {
-                // receives from the epoch account are forbidden
-                if self.has_epoch_link(state_block) {
-                    return false;
-                }
-
-                match &self.old_account_info {
-                    Some(info) => {
-                        state_block.balance() >= info.balance && !state_block.link().is_zero()
-                    }
-                    None => true,
-                }
-            }
-            _ => false,
-        }
+        let old_balance = self
+            .old_account_info
+            .as_ref()
+            .map(|i| i.balance)
+            .unwrap_or_default();
+        is_receive_block(self.block, &old_balance, self.epochs)
     }
 
     pub(crate) fn source_epoch(&self) -> Epoch {
@@ -245,12 +235,131 @@ impl<'a> BlockValidator<'a> {
             self.is_epoch_block(),
         )
     }
+}
 
-    pub(crate) fn balance_changed(&self) -> bool {
-        if let Some(info) = &self.old_account_info {
-            self.new_balance() != info.balance
-        } else {
-            false
+fn is_receive_block(block: &Block, old_balance: &Amount, epochs: &Epochs) -> bool {
+    match block {
+        Block::LegacyReceive(_) | Block::LegacyOpen(_) => true,
+        Block::LegacyChange(_) | Block::LegacySend(_) => false,
+        Block::State(state_block) => {
+            match state_block.balance().cmp(old_balance) {
+                Ordering::Less => false,   // send block
+                Ordering::Greater => true, // receive block
+                Ordering::Equal => {
+                    if state_block.link().is_zero() {
+                        false // change block
+                    } else {
+                        // any block with a link and a balance that hasn't decreased is considered
+                        // to be a receive block unless the link points to an epoch account
+                        !epochs.is_epoch_link(&state_block.link())
+                    }
+                }
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ledger_constants::LEDGER_CONSTANTS_STUB;
+    use rsnano_types::{
+        ChangeBlock, Link, OpenBlock, PrivateKey, ReceiveBlock, SendBlock, StateBlockArgs,
+    };
+
+    #[test]
+    fn is_receive_returns_true_for_regular_legacy_receive_block() {
+        let epochs = &LEDGER_CONSTANTS_STUB.epochs;
+        let block: Block = Block::LegacyReceive(ReceiveBlock::new_test_instance());
+        let old_balance = Amount::ZERO;
+        assert!(is_receive_block(&block, &old_balance, epochs));
+    }
+
+    #[test]
+    fn is_receive_returns_true_for_state_receive_block() {
+        let epochs = &LEDGER_CONSTANTS_STUB.epochs;
+        let old_balance = Amount::raw(100);
+        let block: Block = StateBlockArgs {
+            key: &PrivateKey::from(1),
+            previous: 2.into(),
+            representative: 3.into(),
+            balance: old_balance + Amount::raw(1),
+            link: 4.into(),
+            work: 0.into(),
+        }
+        .into();
+        assert!(is_receive_block(&block, &old_balance, epochs));
+    }
+
+    #[test]
+    fn is_receive_returns_true_for_regular_legacy_open_block() {
+        let epochs = &LEDGER_CONSTANTS_STUB.epochs;
+        let block: Block = Block::LegacyOpen(OpenBlock::new_test_instance());
+        let old_balance = Amount::ZERO;
+        assert!(is_receive_block(&block, &old_balance, epochs));
+    }
+
+    #[test]
+    fn is_receive_returns_false_for_legacy_send_block() {
+        let epochs = &LEDGER_CONSTANTS_STUB.epochs;
+        let block: Block = Block::LegacySend(SendBlock::new_test_instance());
+        let old_balance = Amount::ZERO;
+        assert!(!is_receive_block(&block, &old_balance, epochs));
+    }
+
+    #[test]
+    fn is_receive_returns_false_for_legacy_change_block() {
+        let epochs = &LEDGER_CONSTANTS_STUB.epochs;
+        let block: Block = Block::LegacyChange(ChangeBlock::new_test_instance());
+        let old_balance = Amount::ZERO;
+        assert!(!is_receive_block(&block, &old_balance, epochs));
+    }
+
+    #[test]
+    fn is_receive_returns_false_for_state_change_block() {
+        let epochs = &LEDGER_CONSTANTS_STUB.epochs;
+        let old_balance = Amount::raw(1);
+        let block: Block = StateBlockArgs {
+            key: &PrivateKey::from(1),
+            previous: 2.into(),
+            representative: 3.into(),
+            balance: old_balance,
+            link: Link::ZERO,
+            work: 0.into(),
+        }
+        .into();
+        assert!(!is_receive_block(&block, &old_balance, epochs));
+    }
+
+    #[test]
+    fn is_receive_returns_false_for_state_send_block() {
+        let epochs = &LEDGER_CONSTANTS_STUB.epochs;
+        let old_balance = Amount::raw(100);
+        let block: Block = StateBlockArgs {
+            key: &PrivateKey::from(1),
+            previous: 2.into(),
+            representative: 3.into(),
+            balance: old_balance - Amount::raw(1),
+            link: 4.into(),
+            work: 0.into(),
+        }
+        .into();
+        assert!(!is_receive_block(&block, &old_balance, epochs));
+    }
+
+    #[test]
+    fn is_receive_returns_false_for_epoch_block() {
+        let epochs = &LEDGER_CONSTANTS_STUB.epochs;
+        let old_balance = Amount::raw(100);
+        let block: Block = StateBlockArgs {
+            key: &PrivateKey::from(1),
+            previous: 2.into(),
+            representative: 3.into(),
+            balance: old_balance,
+            link: *epochs.link(Epoch::Epoch2).unwrap(),
+            work: 0.into(),
+        }
+        .into();
+        assert!(!is_receive_block(&block, &old_balance, epochs));
     }
 }

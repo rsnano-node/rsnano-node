@@ -69,6 +69,7 @@ fn open_new_account_straight_to_epoch_2() {
         .assert_is_valid();
     assert_eq!(instructions.set_account_info.epoch, Epoch::Epoch2);
     assert_eq!(instructions.set_sideband.details.epoch, Epoch::Epoch2);
+    assert_eq!(instructions.set_sideband.balance, Amount::raw(10));
 }
 
 #[test]
@@ -82,4 +83,19 @@ fn fails_with_bad_signature_if_signature_is_invalid() {
                 .build()
         })
         .assert_validation_fails_with(BlockError::BadSignature);
+}
+
+#[test]
+fn receive_from_epoch_is_rejected() {
+    BlockValidationTest::for_epoch2_account()
+        .block_to_validate(|chain| chain.new_receive_block().link(epoch_v2_link()).build())
+        .assert_validation_fails_with(BlockError::Unreceivable);
+}
+
+#[test]
+fn receive_from_epoch_with_valid_pending_is_rejected() {
+    BlockValidationTest::for_epoch2_account()
+        .with_pending_receive(Amount::raw(1), Epoch::Epoch2)
+        .block_to_validate(|chain| chain.new_receive_block().link(epoch_v2_link()).build())
+        .assert_validation_fails_with(BlockError::Unreceivable);
 }

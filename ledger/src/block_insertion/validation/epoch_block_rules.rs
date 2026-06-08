@@ -9,7 +9,7 @@ impl<'a> BlockValidator<'a> {
         self.ensure_epoch_open_has_pending_entry()?;
         self.ensure_valid_epoch_for_unopened_account()?;
         self.ensure_epoch_upgrade_is_sequential_for_existing_account()?;
-        self.ensure_epoch_block_does_not_change_balance()
+        self.ensure_no_receive_from_epoch_account()
     }
 
     fn ensure_epoch_block_does_not_change_representative(&self) -> Result<(), BlockError> {
@@ -63,13 +63,6 @@ impl<'a> BlockValidator<'a> {
         Ok(())
     }
 
-    fn ensure_epoch_block_does_not_change_balance(&self) -> Result<(), BlockError> {
-        if self.is_epoch_block() && self.balance_changed() {
-            return Err(BlockError::BalanceMismatch);
-        }
-        Ok(())
-    }
-
     /// If the previous block is missing, we cannot determine whether it is an epoch block
     /// or not. That means we don't know how to check the signature. This precheck just checks
     /// the signature with both the account owner and the epoch signer, because one of them
@@ -107,6 +100,17 @@ impl<'a> BlockValidator<'a> {
             && self.previous_block.is_none()
         {
             return Err(BlockError::GapPrevious);
+        }
+        Ok(())
+    }
+
+    fn ensure_no_receive_from_epoch_account(&self) -> Result<(), BlockError> {
+        if self.is_receive()
+            && let Block::State(state_block) = self.block
+        {
+            if self.has_epoch_link(state_block) {
+                return Err(BlockError::Unreceivable);
+            }
         }
         Ok(())
     }

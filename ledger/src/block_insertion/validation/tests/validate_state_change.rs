@@ -1,4 +1,4 @@
-use crate::block_insertion::validation::tests::BlockValidationTest;
+use crate::{BlockError, block_insertion::validation::tests::BlockValidationTest};
 use rsnano_types::{AccountInfo, BlockDetails, BlockSideband, Epoch};
 
 #[test]
@@ -37,4 +37,17 @@ fn valid_change_block() {
         "sideband"
     );
     assert_eq!(result.is_epoch_block, false);
+}
+
+#[test]
+fn change_block_with_link_is_rejected() {
+    BlockValidationTest::for_epoch2_account()
+        .block_to_validate(|chain| {
+            chain
+                .new_state_block()
+                .representative(12345)
+                .link(456)
+                .build()
+        })
+        .assert_validation_fails_with(BlockError::Unreceivable);
 }

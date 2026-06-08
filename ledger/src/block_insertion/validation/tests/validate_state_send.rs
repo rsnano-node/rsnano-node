@@ -2,7 +2,7 @@ use rsnano_types::{
     AccountInfo, Amount, BlockDetails, BlockSideband, Epoch, PendingInfo, PendingKey,
 };
 
-use crate::block_insertion::validation::tests::BlockValidationTest;
+use crate::{BlockError, block_insertion::validation::tests::BlockValidationTest};
 
 #[test]
 fn valid_send_block() {
@@ -63,4 +63,11 @@ fn sends_to_burn_account_are_valid() {
     BlockValidationTest::for_epoch0_account()
         .block_to_validate(|chain| chain.new_send_block().link(0).build())
         .assert_is_valid();
+}
+
+#[test]
+fn send_must_send_at_least_1_raw() {
+    BlockValidationTest::for_epoch0_account()
+        .block_to_validate(|chain| chain.new_send_block().amount_sent(0).build())
+        .assert_validation_fails_with(BlockError::Unreceivable);
 }
