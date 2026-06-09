@@ -12,7 +12,7 @@ use tracing::debug;
 use rsnano_ledger::{RepWeightCache, RepWeights};
 use rsnano_network::{Channel, ChannelId};
 use rsnano_nullable_clock::Timestamp;
-use rsnano_types::{Amount, NetworkType, PublicKey};
+use rsnano_types::{Account, Amount, NetworkType, PublicKey};
 use rsnano_utils::{
     container_info::{ContainerInfo, ContainerInfoProvider},
     stats::{StatsCollection, StatsSource},
@@ -37,6 +37,11 @@ pub struct OnlineReps {
     online_weight_minimum: Amount,
     representative_weight_minimum: Amount,
     trim_counter: u64,
+    /// Representatives whose weight must NOT count toward the quorum denominator
+    /// because they cannot contribute final votes (e.g. an ancient node that only
+    /// emits non-final votes). Their votes still count in election tallies; they
+    /// are only removed from the quorum bar calculation. See `quorum_delta`.
+    excluded_reps: Vec<PublicKey>,
 }
 
 impl OnlineReps {
@@ -63,7 +68,38 @@ impl OnlineReps {
             online_weight_minimum,
             representative_weight_minimum,
             trim_counter: 0,
+            excluded_reps: Self::default_excluded_reps(),
         }
+    }
+
+    /// Accounts excluded from the quorum denominator (see `excluded_reps`).
+    ///
+    /// The Banano genesis representative runs an ancient node (V22.1) that never
+    /// emits final votes, yet its ~15% weight is still seen as "online" (its
+    /// non-final votes are relayed by other nodes). That inflates `quorum_delta`
+    /// above the weight that can actually be reached with final votes, which can
+    /// deadlock confirmation network-wide. Excluding it restores a reachable bar.
+    /// On other networks this account simply has zero weight, so this is a no-op.
+    fn default_excluded_reps() -> Vec<PublicKey> {
+        const EXCLUDED: [&str; 1] =
+            ["ban_1bananobh5rat99qfgt1ptpieie5swmoth87thi74qgbfrij7dcgjiij94xr"];
+        EXCLUDED
+            .iter()
+            .filter_map(|s| Account::parse(s).map(PublicKey::from))
+            .collect()
+    }
+
+    /// Total ledger weight of the excluded representatives.
+    fn excluded_weight(&self) -> Amount {
+        if self.excluded_reps.is_empty() {
+            return Amount::ZERO;
+        }
+        let weights = self.rep_weights.read();
+        let mut total = Amount::ZERO;
+        for rep in &self.excluded_reps {
+            total += weights.get(rep).cloned().unwrap_or_default();
+        }
+        total
     }
 
     pub fn new_test_instance() -> Self {
@@ -140,6 +176,21 @@ impl OnlineReps {
     /// Returns the quorum required for confirmation
     pub fn quorum_delta(&self) -> Amount {
         let weight = max(self.online_weight(), self.trended_or_minimum_weight());
+
+        // A1: remove the weight of representatives that cannot contribute final
+        // votes (e.g. the ancient genesis node) from the quorum base. Such weight
+        // is counted as "online" (its non-final votes are relayed) but can never
+        // appear in a final tally, so leaving it in makes the bar unreachable.
+        // The genesis weight is present in both `online_weight` and the trended
+        // sample, so subtracting it once from whichever is larger lowers the bar
+        // immediately. Floored at `online_weight_minimum` so it can never collapse.
+        let excluded = self.excluded_weight();
+        let weight = if weight > excluded {
+            weight - excluded
+        } else {
+            Amount::ZERO
+        };
+        let weight = max(weight, self.online_weight_minimum);
 
         // Using a larger container to ensure maximum precision
         let delta =
@@ -518,6 +569,30 @@ mod tests {
         weights.put(rep_account, Amount::nano(100_000_000));
         online_reps.vote_observed(rep_account, Timestamp::new_test_instance());
 
+        assert_eq!(online_reps.quorum_delta(), Amount::nano(67_000_000));
+    }
+
+    #[test]
+    fn quorum_delta_excludes_non_finalizing_reps() {
+        let weights = Arc::new(RepWeightCache::default());
+        let mut online_reps = OnlineReps::builder().rep_weights(weights.clone()).finish();
+
+        // A normal (finalizing) rep and an excluded rep are both seen online.
+        let normal_rep = PublicKey::from(42);
+        let excluded_rep: PublicKey = Account::parse(
+            "ban_1bananobh5rat99qfgt1ptpieie5swmoth87thi74qgbfrij7dcgjiij94xr",
+        )
+        .unwrap()
+        .into();
+        weights.put(normal_rep, Amount::nano(100_000_000));
+        weights.put(excluded_rep, Amount::nano(200_000_000));
+        online_reps.vote_observed(normal_rep, Timestamp::new_test_instance());
+        online_reps.vote_observed(excluded_rep, Timestamp::new_test_instance());
+
+        // Online weight still reflects both reps (300M)...
+        assert_eq!(online_reps.online_weight(), Amount::nano(300_000_000));
+        // ...but the quorum bar is computed only from the finalizing weight (100M),
+        // so it is 67% of 100M, not 67% of 300M.
         assert_eq!(online_reps.quorum_delta(), Amount::nano(67_000_000));
     }
 
