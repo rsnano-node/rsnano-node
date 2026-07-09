@@ -1,6 +1,5 @@
-use crate::{Account, RawKey, Signature, serialize_32_byte_string, u256_struct};
+use crate::{Account, RawKey, Signature, SignatureError, serialize_32_byte_string, u256_struct};
 use ed25519_dalek::Verifier;
-use thiserror::Error;
 
 u256_struct!(PublicKey);
 serialize_32_byte_string!(PublicKey);
@@ -32,15 +31,6 @@ impl From<RawKey> for PublicKey {
         let signing_key = ed25519_dalek::SigningKey::from(&secret);
         let public = ed25519_dalek::VerifyingKey::from(&signing_key);
         Self::from_bytes(public.to_bytes())
-    }
-}
-
-#[derive(Error, Debug, PartialEq, Eq)]
-pub struct SignatureError {}
-
-impl std::fmt::Display for SignatureError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "invalid signature")
     }
 }
 

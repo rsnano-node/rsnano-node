@@ -3,6 +3,7 @@ use std::{
     fmt::{Debug, Write},
     io::Read,
 };
+use thiserror::Error;
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Signature {
@@ -106,6 +107,15 @@ impl<'de> Visitor<'de> for SignatureVisitor {
             serde::de::Error::invalid_value(Unexpected::Str(v), &"a hex string containing 64 bytes")
         })?;
         Ok(signature)
+    }
+}
+
+#[derive(Error, Debug, PartialEq, Eq)]
+pub struct SignatureError {}
+
+impl std::fmt::Display for SignatureError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "invalid signature")
     }
 }
 
