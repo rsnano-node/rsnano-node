@@ -9,7 +9,6 @@ services:
       - --data-path=/data
       - node
       - run
-      - --disable-ongoing-bootstrap
       - --disable-rep-crawler
     expose:
       - "45000"

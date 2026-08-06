@@ -73,7 +73,6 @@ cp grpc_conformance/container/config/*.toml "$RSNANO_GRPC_DATA/"
   --network=dev \
   --data-path="$RSNANO_GRPC_DATA" \
   node run \
-  --disable-ongoing-bootstrap \
   --disable-rep-crawler
 ```
 
