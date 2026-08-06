@@ -1,0 +1,5 @@
+[node.websocket]
+enable = false
+
+[rpc]
+enable = true

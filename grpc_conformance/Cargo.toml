@@ -1,0 +1,16 @@
+[package]
+name = "rsnano_grpc_conformance"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "grpc-conformance"
+path = "src/main.rs"
+
+[dependencies]
+rsnano_grpc_proto = { path = "../grpc_proto" }
+rsnano_ledger = { path = "../ledger" }
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+tonic = "0.13"

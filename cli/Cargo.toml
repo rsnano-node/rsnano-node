@@ -14,6 +14,7 @@ path = "src/main_banano.rs"
 required-features = ["banano"]
 
 [features]
+grpc = ["rsnano_daemon/grpc"]
 ledger_snapshots = ["rsnano_node/ledger_snapshots", "rsnano_rpc_server/ledger_snapshots"]
 banano = [
 	"rsnano_types/banano",

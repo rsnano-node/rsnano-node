@@ -4580,6 +4580,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rsnano_grpc_conformance"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "rsnano_grpc_proto",
+ "rsnano_ledger",
+ "serde_json",
+ "tokio",
+ "tonic",
+]
+
+[[package]]
 name = "rsnano_grpc_proto"
 version = "0.1.0"
 dependencies = [
