@@ -13,6 +13,8 @@
 
 RsNano is a full Nano/Banano node written in Rust.
 
+For the experimental gRPC add-on, see [GRPC-README.md](GRPC-README.md).
+
 ### What is Nano?
 
 Nano is a digital payment protocol designed to be accessible and lightweight, 
@@ -140,6 +142,21 @@ flowchart TD
         websocket_server
         websocket_client
     end
+<<<<<<< HEAD
+=======
+
+    subgraph nullables
+        fs
+        clock
+        random
+        tcp
+        lmdb
+        http_client
+        console
+        env
+        output_tracker
+    end
+>>>>>>> 352ed255b (docs: isolate gRPC add-on documentation)
 ```
 
 * `main`: The node executable.
@@ -156,4 +173,3 @@ flowchart TD
 * `types`: Contains the basic types like `BlockHash`, `Account`, `KeyPair`,...
 * `utils`: Contains utilities like stats
 * `nullables`: Nullable wrappers for infrastructure libraries.
-

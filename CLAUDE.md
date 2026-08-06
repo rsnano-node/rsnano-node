@@ -45,6 +45,8 @@ After finishing editing source files:
 1. Run `cargo fmt --all` to format the code.
 2. Run `cargo test --lib -q` to verify all unit tests pass.
 
+For gRPC-specific work, start with [GRPC-README.md](GRPC-README.md).
+
 ## Code Style
 
 - Prefer `use` statements at the top of a file over inline fully-qualified paths (e.g. `use std::time::Duration` rather than `std::time::Duration` inline).
@@ -161,4 +163,3 @@ In tests, use `Ledger::new_null()` and `*::new_null()` constructors to get in-me
 ### Threading model
 
 Long-running work uses `ThreadPool` (from `rsnano_utils::thread_pool`) and `TickerPool`/`TimerThread` for periodic tasks. `CancellationToken` is used for cooperative shutdown. Background threads use `backpressure_channel` for flow control.
-
