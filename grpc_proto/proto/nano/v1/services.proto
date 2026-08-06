@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package nano.v1;
+
+import "nano/v1/types.proto";
+
+service AccountService {
+  rpc AccountInfo(AccountInfoRequest) returns (AccountInfoResponse);
+  rpc AccountBalance(AccountBalanceRequest) returns (AccountBalanceResponse);
+  rpc AccountHistory(AccountHistoryRequest) returns (AccountHistoryResponse);
+  rpc AccountRepresentative(AccountRepresentativeRequest) returns (AccountRepresentativeResponse);
+}
+
+service BlockService {
+  rpc Process(ProcessRequest) returns (ProcessResponse);
+  rpc BlockInfo(BlockInfoRequest) returns (BlockInfoResponse);
+  rpc Blocks(BlocksRequest) returns (BlocksResponse);
+}
+
+service LedgerService {
+  rpc FrontierCount(FrontierCountRequest) returns (FrontierCountResponse);
+  rpc ReceivableBlocks(ReceivableBlocksRequest) returns (ReceivableBlocksResponse);
+}
+
+service NetworkService {
+  rpc Peers(PeersRequest) returns (PeersResponse);
+  rpc Telemetry(TelemetryRequest) returns (TelemetryResponse);
+}
+
+service NodeService {
+  rpc Status(StatusRequest) returns (StatusResponse);
+  rpc Version(VersionRequest) returns (VersionResponse);
+  rpc Keepalive(KeepaliveRequest) returns (KeepaliveResponse);
+}
+
+service SubscriptionService {
+  rpc SubscribeConfirmations(SubscribeConfirmationsRequest) returns (stream ConfirmationEvent);
+  rpc SubscribeTelemetry(SubscribeTelemetryRequest) returns (stream TelemetryEvent);
+  rpc SubscribeActiveElections(SubscribeActiveElectionsRequest) returns (stream ElectionEvent);
+}

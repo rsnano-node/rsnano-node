@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
+default = []
+grpc = ["rsnano_grpc_server"]
 ledger_snapshots = [
 	"rsnano_utils/ledger_snapshots",
 	"rsnano_ledger/ledger_snapshots",
@@ -26,8 +28,10 @@ rsnano_ledger = { path = "../ledger" }
 rsnano_node = { path = "../node" }
 rsnano_rpc_server = { path = "../rpc/server" }
 rsnano_websocket_server = { path = "../websocket/server" }
+rsnano_grpc_server = { path = "../grpc_server", optional = true }
 anyhow = "1"
 tokio = { version = "1", features = ["signal"] }
+tokio-util = "0"
 tracing = "0"
 rlimit = "0.11.0"
 file-mode = "0.1.2"

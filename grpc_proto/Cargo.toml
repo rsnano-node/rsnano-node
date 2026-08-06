@@ -1,0 +1,11 @@
+[package]
+name = "rsnano_grpc_proto"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tonic = "0.13"
+prost = "0.13"
+
+[build-dependencies]
+tonic-build = "0.13"

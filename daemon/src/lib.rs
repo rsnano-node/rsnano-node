@@ -149,7 +149,7 @@ impl DaemonBuilder {
             }
         };
 
-        node.runtime.block_on(run_rpc(
+        node.runtime.block_on(run_services(
             daemon_config,
             rpc_config,
             node.clone(),
@@ -190,6 +190,46 @@ impl NodeEventHandler for ForwardNodeEvent {
     fn handle(&mut self, event: &NodeEvent) {
         (self.0)(event);
     }
+}
+
+async fn run_services(
+    daemon_config: DaemonConfig,
+    rpc_config: RpcServerConfig,
+    node: Arc<Node>,
+    tx_stop: oneshot::Sender<()>,
+    wait_for_shutdown: impl Future<Output = ()> + Send + 'static,
+) -> anyhow::Result<()> {
+    #[cfg(feature = "grpc")]
+    {
+        let grpc_config = rsnano_grpc_server::GrpcServerConfig::load_from_data_path(
+            node.network_params.network.current_network,
+            &node.data_path,
+        )?;
+        let grpc_shutdown = tokio_util::sync::CancellationToken::new();
+        let grpc_shutdown_token = grpc_shutdown.clone();
+
+        let node_clone = node.clone();
+        let grpc_handle = node.runtime.spawn(async move {
+            rsnano_grpc_server::run_grpc_server(
+                node_clone,
+                grpc_config,
+                grpc_shutdown_token.cancelled(),
+            )
+            .await
+        });
+
+        run_rpc(daemon_config, rpc_config, node, tx_stop, wait_for_shutdown).await?;
+
+        grpc_shutdown.cancel();
+        let _ = grpc_handle.await;
+    }
+
+    #[cfg(not(feature = "grpc"))]
+    {
+        run_rpc(daemon_config, rpc_config, node, tx_stop, wait_for_shutdown).await?;
+    }
+
+    Ok(())
 }
 
 async fn run_rpc(

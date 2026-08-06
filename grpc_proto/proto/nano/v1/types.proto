@@ -1,0 +1,263 @@
+syntax = "proto3";
+
+package nano.v1;
+
+option java_package = "nano.v1";
+option go_package = "nano/v1";
+
+message AccountInfoRequest {
+  string account = 1;
+  bool receivable = 2;
+  bool representative = 3;
+  bool weight = 4;
+  bool pending = 5;
+}
+
+message AccountInfoResponse {
+  string frontier = 1;
+  string open_block = 2;
+  string representative_block = 3;
+  string balance = 4;
+  uint64 modified_timestamp = 5;
+  uint64 block_count = 6;
+  string account_version = 7;
+  string confirmation_height = 8;
+  string confirmation_height_frontier = 9;
+}
+
+message AccountBalanceRequest {
+  string account = 1;
+}
+
+message AccountBalanceResponse {
+  string balance = 1;
+  string receivable = 2;
+}
+
+message AccountHistoryRequest {
+  string account = 1;
+  string head = 2;
+  int32 count = 3;
+  bool raw = 4;
+  bool reverse = 5;
+  string account_filter = 6;
+}
+
+message AccountHistoryResponse {
+  repeated HistoryEntry entries = 1;
+  string previous = 2;
+}
+
+message HistoryEntry {
+  string hash = 1;
+  string type = 2;
+  string account = 3;
+  string amount = 4;
+  string local_timestamp = 5;
+  string height = 6;
+}
+
+message AccountRepresentativeRequest {
+  string account = 1;
+}
+
+message AccountRepresentativeResponse {
+  string representative = 1;
+}
+
+message ProcessRequest {
+  string block = 1;
+  bool force = 2;
+  bool watch_work = 3;
+  string subtype = 4;
+}
+
+message ProcessResponse {
+  string hash = 1;
+}
+
+message BlockInfoRequest {
+  string hash = 1;
+}
+
+message BlockInfoResponse {
+  string block_account = 1;
+  string amount = 2;
+  string balance = 3;
+  string height = 4;
+  string local_timestamp = 5;
+  string successor = 6;
+  string confirmed = 7;
+  string contents = 8;
+  string subtype = 9;
+}
+
+message BlocksRequest {
+  repeated string hashes = 1;
+  bool json_not_found = 2;
+}
+
+message BlocksResponse {
+  map<string, string> blocks = 1;
+}
+
+message FrontierCountRequest {}
+
+message FrontierCountResponse {
+  uint64 count = 1;
+}
+
+message ReceivableBlocksRequest {
+  string account = 1;
+  uint64 count = 2;
+  string threshold = 3;
+  bool source = 4;
+  bool include_active = 5;
+  bool sorting = 6;
+  bool include_only_confirmed = 7;
+}
+
+message ReceivableBlocksResponse {
+  map<string, ReceivableInfo> blocks = 1;
+}
+
+message ReceivableInfo {
+  string amount = 1;
+  string source = 2;
+}
+
+message PeersRequest {}
+
+message PeersResponse {
+  map<string, PeerInfo> peers = 1;
+}
+
+message PeerInfo {
+  string protocol_version = 1;
+  string node_id = 2;
+  string type = 3;
+  string account = 4;
+  string weight = 5;
+}
+
+message TelemetryRequest {
+  string address = 1;
+  uint32 port = 2;
+}
+
+message TelemetryResponse {
+  string block_count = 1;
+  string cemented_count = 2;
+  string unchecked_count = 3;
+  string account_count = 4;
+  string bandwidth_cap = 5;
+  string peer_count = 6;
+  string protocol_version = 7;
+  string uptime = 8;
+  string genesis_block = 9;
+  string major_version = 10;
+  string minor_version = 11;
+  string patch_version = 12;
+  string pre_release_version = 13;
+  string maker = 14;
+  uint64 timestamp = 15;
+  string node_id = 16;
+  string signature = 17;
+}
+
+message StatusRequest {}
+
+message StatusResponse {
+  string version = 1;
+  bool synced = 2;
+  bool bootstrap_storage = 3;
+  uint64 block_count = 4;
+  string cemented_count = 5;
+  uint64 unchecked_count = 6;
+  uint64 account_count = 7;
+  uint64 bandwidth_cap = 8;
+  uint64 peer_count = 9;
+  string protocol_version = 10;
+  uint64 uptime = 11;
+  string genesis_block = 12;
+  string major_version = 13;
+  string minor_version = 14;
+  string patch_version = 15;
+  string pre_release_version = 16;
+  string maker = 17;
+  uint64 timestamp = 18;
+  string node_id = 19;
+  string signature = 20;
+  bool active_difficulty = 21;
+}
+
+message VersionRequest {}
+
+message VersionResponse {
+  string rpc_version = 1;
+  string store_version = 2;
+  string protocol_version = 3;
+  string node_vendor = 4;
+  uint64 store_vendor = 5;
+  string network = 6;
+  string network_identifier = 7;
+  string build_info = 8;
+}
+
+message KeepaliveRequest {
+  string address = 1;
+  uint32 port = 2;
+}
+
+message KeepaliveResponse {}
+
+message SubscribeConfirmationsRequest {
+  bool include_block = 1;
+  bool include_election_info = 2;
+  bool include_sideband_info = 3;
+  bool include_votes = 4;
+}
+
+message ConfirmationEvent {
+  string hash = 1;
+  string account = 2;
+  string amount = 3;
+  uint64 height = 4;
+  string block = 5;
+  string election_info = 6;
+  string sideband_info = 7;
+  string votes = 8;
+  string gap = 9;
+}
+
+message SubscribeTelemetryRequest {}
+
+message TelemetryEvent {
+  string block_count = 1;
+  string cemented_count = 2;
+  string unchecked_count = 3;
+  string account_count = 4;
+  string bandwidth_cap = 5;
+  string peer_count = 6;
+  string protocol_version = 7;
+  string uptime = 8;
+  string genesis_block = 9;
+  string major_version = 10;
+  string minor_version = 11;
+  string patch_version = 12;
+  string pre_release_version = 13;
+  string maker = 14;
+  uint64 timestamp = 15;
+  string node_id = 16;
+  string signature = 17;
+  string address = 18;
+}
+
+message SubscribeActiveElectionsRequest {
+  bool include_election_info = 1;
+}
+
+message ElectionEvent {
+  string hash = 1;
+  string type = 2;
+}
