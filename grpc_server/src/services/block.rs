@@ -80,6 +80,10 @@ impl BlockService for BlockServiceImpl {
             }
         }
 
+        if blocks_map.is_empty() && !req.json_not_found {
+            return Err(Status::not_found("block not found"));
+        }
+
         Ok(Response::new(BlocksResponse { blocks: blocks_map }))
     }
 }

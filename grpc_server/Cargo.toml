@@ -9,10 +9,10 @@ rsnano_node = { path = "../node" }
 rsnano_ledger = { path = "../ledger" }
 rsnano_types = { path = "../types" }
 rsnano_network = { path = "../network" }
-tonic = "0.13"
+tonic = { version = "0.13", features = ["tls-ring"] }
 tonic-reflection = "0.13"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
-tokio-stream = "0.1"
+tokio = { version = "1", features = ["fs", "macros", "rt-multi-thread", "sync", "time"] }
+tokio-stream = { version = "0.1", features = ["net"] }
 tracing = "0.1"
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
@@ -20,3 +20,4 @@ serde_json = "1"
 
 [dev-dependencies]
 test_helpers = { path = "../tools/test_helpers" }
+tempfile = "3"

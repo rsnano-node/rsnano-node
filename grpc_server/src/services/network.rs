@@ -46,12 +46,13 @@ impl NetworkService for NetworkServiceImpl {
     ) -> Result<Response<TelemetryResponse>, Status> {
         let network = self.node.network.read().unwrap();
         let peer_count = network.channels().count();
+        let unchecked_count = self.node.unchecked.lock().unwrap().len();
 
         Ok(Response::new(TelemetryResponse {
-            block_count: "0".to_string(),
-            cemented_count: "0".to_string(),
-            unchecked_count: "0".to_string(),
-            account_count: "0".to_string(),
+            block_count: self.node.ledger.block_count().to_string(),
+            cemented_count: self.node.ledger.confirmed_count().to_string(),
+            unchecked_count: unchecked_count.to_string(),
+            account_count: self.node.ledger.account_count().to_string(),
             bandwidth_cap: "0".to_string(),
             peer_count: peer_count.to_string(),
             protocol_version: self
@@ -64,9 +65,9 @@ impl NetworkService for NetworkServiceImpl {
             genesis_block: self
                 .node
                 .network_params
-                .network
-                .current_network
-                .as_str()
+                .ledger
+                .genesis_block
+                .hash()
                 .to_string(),
             major_version: "0".to_string(),
             minor_version: "0".to_string(),

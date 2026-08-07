@@ -10,6 +10,10 @@ impl ApiKeyInterceptor {
         Self { valid_keys }
     }
 
+    #[expect(
+        clippy::result_large_err,
+        reason = "Tonic's interceptor contract returns Status by value"
+    )]
     pub fn interceptor(self) -> impl FnMut(Request<()>) -> Result<Request<()>, Status> + Clone {
         move |req: Request<()>| {
             if self.valid_keys.is_empty() {

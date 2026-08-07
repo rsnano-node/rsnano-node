@@ -100,6 +100,11 @@ shutdown_drain_ms = 5000
 api_keys = []            # empty = no authentication
 ```
 
+When `enable_tls` is true, both TLS paths are required and must point to a
+PEM-encoded certificate chain and private key. The daemon fails startup if the
+files cannot be read, the identity is invalid, or the gRPC address cannot be
+bound; it does not silently fall back to plaintext or continue without gRPC.
+
 Default ports by network:
 
 | Network | Port |
@@ -137,6 +142,8 @@ infrastructure the JSON-RPC and WebSocket servers use. There is no
 intermediary layer — the gRPC handlers read directly from the ledger, network,
 and telemetry subsystems.
 
-Streaming RPCs (`SubscriptionService`) register callbacks on the node's
-telemetry and event systems. Events are forwarded into `tokio::sync::mpsc`
-channels that tonic drains as HTTP/2 stream flow-control allows.
+`SubscriptionService` registers one telemetry callback for the gRPC server,
+then forwards events through a bounded dispatcher into per-client channels.
+Disconnected, closed, or persistently slow clients are removed from the
+dispatcher. This keeps network message-processing threads non-blocking and
+prevents callback accumulation across client reconnects.

@@ -1,5 +1,7 @@
 mod http_callbacks;
 
+#[cfg(feature = "grpc")]
+use anyhow::Context;
 use file_mode::set_umask;
 use http_callbacks::HttpCallbacks;
 use rsnano_node::{
@@ -218,10 +220,12 @@ async fn run_services(
             .await
         });
 
-        run_rpc(daemon_config, rpc_config, node, tx_stop, wait_for_shutdown).await?;
-
-        grpc_shutdown.cancel();
-        let _ = grpc_handle.await;
+        monitor_grpc(
+            run_rpc(daemon_config, rpc_config, node, tx_stop, wait_for_shutdown),
+            grpc_handle,
+            grpc_shutdown,
+        )
+        .await?;
     }
 
     #[cfg(not(feature = "grpc"))]
@@ -230,6 +234,33 @@ async fn run_services(
     }
 
     Ok(())
+}
+
+#[cfg(feature = "grpc")]
+async fn monitor_grpc(
+    rpc: impl Future<Output = anyhow::Result<()>>,
+    mut grpc_handle: tokio::task::JoinHandle<anyhow::Result<()>>,
+    grpc_shutdown: tokio_util::sync::CancellationToken,
+) -> anyhow::Result<()> {
+    tokio::select! {
+        rpc_result = rpc => {
+            grpc_shutdown.cancel();
+            grpc_handle
+                .await
+                .map_err(|error| anyhow::anyhow!("gRPC server task failed: {error}"))?
+                .context("gRPC server shutdown failed")?;
+            rpc_result
+        }
+        grpc_result = &mut grpc_handle => {
+            grpc_shutdown.cancel();
+            match grpc_result
+                .map_err(|error| anyhow::anyhow!("gRPC server task failed: {error}"))?
+            {
+                Ok(()) => anyhow::bail!("gRPC server stopped unexpectedly"),
+                Err(error) => Err(error.context("gRPC server failed")),
+            }
+        }
+    }
 }
 
 async fn run_rpc(
@@ -254,4 +285,50 @@ async fn run_rpc(
         wait_for_shutdown.await;
     };
     Ok(())
+}
+
+#[cfg(all(test, feature = "grpc"))]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn grpc_server_error_is_propagated_while_rpc_is_running() {
+        let grpc_handle = tokio::spawn(async { Err(anyhow::anyhow!("address already in use")) });
+        let rpc = std::future::pending::<anyhow::Result<()>>();
+
+        let error = monitor_grpc(rpc, grpc_handle, tokio_util::sync::CancellationToken::new())
+            .await
+            .unwrap_err();
+
+        assert_eq!(
+            format!("{error:#}"),
+            "gRPC server failed: address already in use"
+        );
+    }
+
+    #[tokio::test]
+    async fn grpc_server_is_cancelled_when_rpc_stops() {
+        let shutdown = tokio_util::sync::CancellationToken::new();
+        let wait_for_shutdown = shutdown.clone();
+        let grpc_handle = tokio::spawn(async move {
+            wait_for_shutdown.cancelled().await;
+            Ok(())
+        });
+
+        let result = monitor_grpc(async { Ok(()) }, grpc_handle, shutdown).await;
+
+        assert!(result.is_ok(), "monitoring failed: {result:?}");
+    }
+
+    #[tokio::test]
+    async fn unsolicited_grpc_server_stop_is_an_error() {
+        let grpc_handle = tokio::spawn(async { Ok(()) });
+        let rpc = std::future::pending::<anyhow::Result<()>>();
+
+        let error = monitor_grpc(rpc, grpc_handle, tokio_util::sync::CancellationToken::new())
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.to_string(), "gRPC server stopped unexpectedly");
+    }
 }
