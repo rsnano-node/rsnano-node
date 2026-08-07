@@ -106,12 +106,43 @@ impl AccountService for AccountServiceImpl {
                 .ok_or_else(|| Status::not_found("block not found"))?;
 
             let sideband = block.sideband();
+            let (entry_type, counterparty_account) = match &*block {
+                rsnano_types::Block::LegacySend(b) => ("send", b.destination()),
+                rsnano_types::Block::LegacyReceive(b) => {
+                    let source_acc = any.block_account(&b.source()).unwrap_or_default();
+                    ("receive", source_acc)
+                }
+                rsnano_types::Block::LegacyOpen(b) => {
+                    let genesis = self.node.network_params.ledger.genesis_account;
+                    let source_acc = if b.source() == genesis.into() {
+                        genesis
+                    } else {
+                        any.block_account(&b.source()).unwrap_or_default()
+                    };
+                    ("receive", source_acc)
+                }
+                rsnano_types::Block::LegacyChange(b) => ("change", b.mandatory_representative().into()),
+                rsnano_types::Block::State(_) => {
+                    let subtype_str = block.subtype().as_str();
+                    let counterparty = if block.is_send() {
+                        block.destination().unwrap_or_default()
+                    } else if block.is_receive() {
+                        block.source().and_then(|s| any.block_account(&s)).unwrap_or_default()
+                    } else {
+                        account
+                    };
+                    (subtype_str, counterparty)
+                }
+            };
+
+            let amount = any.block_amount_for(&block).unwrap_or_default();
+
             entries.push(HistoryEntry {
                 hash: head.to_string(),
-                r#type: format!("{:?}", block.block_type()),
-                account: account.encode_account(),
-                amount: block.balance().to_string_dec(),
-                local_timestamp: "0".to_string(),
+                r#type: entry_type.to_string(),
+                account: counterparty_account.encode_account(),
+                amount: amount.to_string_dec(),
+                local_timestamp: sideband.timestamp.as_u64().to_string(),
                 height: sideband.height.to_string(),
             });
 

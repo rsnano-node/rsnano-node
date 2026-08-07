@@ -4,9 +4,9 @@ use rsnano_grpc_proto::nano::v1::{
     BlockInfoRequest, BlockInfoResponse, BlocksRequest, BlocksResponse, ProcessRequest,
     ProcessResponse, block_service_server::BlockService,
 };
-use rsnano_ledger::AnySet;
+use rsnano_ledger::{AnySet, LedgerSet};
 use rsnano_node::Node;
-use rsnano_types::BlockHash;
+use rsnano_types::{BlockHash, BlockType};
 use tonic::{Request, Response, Status};
 
 pub struct BlockServiceImpl {
@@ -17,8 +17,12 @@ pub struct BlockServiceImpl {
 impl BlockService for BlockServiceImpl {
     async fn process(
         &self,
-        _request: Request<ProcessRequest>,
+        request: Request<ProcessRequest>,
     ) -> Result<Response<ProcessResponse>, Status> {
+        let req = request.into_inner();
+        let _: rsnano_types::Block = serde_json::from_str(&req.block)
+            .map_err(|_| Status::invalid_argument("invalid block JSON"))?;
+
         Err(Status::unimplemented(
             "block processing not yet implemented",
         ))
@@ -33,9 +37,16 @@ impl BlockService for BlockServiceImpl {
             .ok_or_else(|| Status::invalid_argument("invalid block hash"))?;
 
         let any = self.node.ledger.any();
-        let block = any
-            .get_block(&hash)
-            .ok_or_else(|| Status::not_found("block not found"))?;
+        let detailed = any.detailed_block(&hash);
+        let (block, confirmed, amount) = if let Some(d) = detailed {
+            (d.block, d.confirmed, d.amount)
+        } else if let Some(b) = any.get_block(&hash) {
+            let confirmed = any.confirmed().block_exists(&hash);
+            let amount = any.block_amount_for(&b);
+            (b, confirmed, amount)
+        } else {
+            return Err(Status::not_found("block not found"));
+        };
 
         let sideband = block.sideband();
         let block_account = any
@@ -49,16 +60,24 @@ impl BlockService for BlockServiceImpl {
             .map(|h| h.to_string())
             .unwrap_or_else(|| "0".to_string());
 
+        let subtype = if block.block_type() == BlockType::State {
+            block.subtype().as_str().to_string()
+        } else {
+            String::new()
+        };
+
+        let amount_str = amount.map(|a| a.to_string_dec()).unwrap_or_default();
+
         Ok(Response::new(BlockInfoResponse {
             block_account,
-            amount: block.balance().to_string_dec(),
+            amount: amount_str,
             balance: block.balance().to_string_dec(),
             height: sideband.height.to_string(),
-            local_timestamp: "0".to_string(),
+            local_timestamp: sideband.timestamp.as_u64().to_string(),
             successor,
-            confirmed: "false".to_string(),
+            confirmed: confirmed.to_string(),
             contents: block.to_json().unwrap_or_default(),
-            subtype: format!("{:?}", sideband.details),
+            subtype,
         }))
     }
 
