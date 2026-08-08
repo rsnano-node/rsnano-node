@@ -1,23 +1,24 @@
 use std::fmt::Write;
 
-pub const ALL_METHODS: [&str; 17] = [
-    "AccountService.AccountInfo",
-    "AccountService.AccountBalance",
-    "AccountService.AccountHistory",
-    "AccountService.AccountRepresentative",
-    "BlockService.Process",
-    "BlockService.BlockInfo",
-    "BlockService.Blocks",
+pub const ALL_METHODS: [&str; 18] = [
+    "AccountService.GetAccountState",
+    "AccountService.ListAccountHistory",
+    "BlockService.PublishStateBlock",
+    "BlockService.GetBlock",
+    "BlockService.GetBlockStatuses",
+    "BlockService.RequestBlockConfirmation",
     "LedgerService.FrontierCount",
-    "LedgerService.ReceivableBlocks",
+    "LedgerService.ListReceivables",
     "NetworkService.Peers",
     "NetworkService.Telemetry",
     "NodeService.Status",
     "NodeService.Version",
     "NodeService.Keepalive",
-    "SubscriptionService.SubscribeConfirmations",
-    "SubscriptionService.SubscribeTelemetry",
-    "SubscriptionService.SubscribeActiveElections",
+    "EventService.WatchConfirmations",
+    "EventService.WatchBlockProcessing",
+    "EventService.WatchElections",
+    "EventService.WatchVotes",
+    "EventService.WatchTelemetry",
 ];
 
 #[derive(Debug, Clone)]
@@ -126,7 +127,7 @@ impl Report {
         writeln!(output, "# RsNano gRPC conformance report\n").unwrap();
         writeln!(
             output,
-            "This report compares the current gRPC implementation with RsNano JSON-RPC on the same deterministic development-network ledger. Complex wallet, peer-topology, election, and streaming state is intentionally deferred from this first 80:20 suite.\n"
+            "This contract-level report compares the current gRPC implementation with RsNano JSON-RPC on the same deterministic development-network ledger. It is not a claim of full Node API coverage; complex wallet, peer-topology, election, and streaming state remains outside this first 80:20 suite.\n"
         )
         .unwrap();
         writeln!(output, "- JSON-RPC endpoint: `{}`", self.rpc_url).unwrap();
@@ -238,7 +239,7 @@ mod tests {
         let report = Report::new("rpc", "grpc");
 
         assert_eq!(
-            report.method_status("AccountService.AccountInfo"),
+            report.method_status("AccountService.GetAccountState"),
             MethodStatus::NotTested
         );
     }
@@ -247,13 +248,13 @@ mod tests {
     fn method_with_only_passing_scenarios_passes() {
         let mut report = Report::new("rpc", "grpc");
         report.record(ScenarioResult::new(
-            "AccountService.AccountInfo",
+            "AccountService.GetAccountState",
             "genesis account",
             Ok(()),
         ));
 
         assert_eq!(
-            report.method_status("AccountService.AccountInfo"),
+            report.method_status("AccountService.GetAccountState"),
             MethodStatus::Passing
         );
     }
@@ -262,18 +263,18 @@ mod tests {
     fn one_failing_scenario_fails_the_method() {
         let mut report = Report::new("rpc", "grpc");
         report.record(ScenarioResult::new(
-            "AccountService.AccountInfo",
+            "AccountService.GetAccountState",
             "genesis account",
             Ok(()),
         ));
         report.record(ScenarioResult::new(
-            "AccountService.AccountInfo",
+            "AccountService.GetAccountState",
             "invalid account",
             Err("wrong code".to_string()),
         ));
 
         assert_eq!(
-            report.method_status("AccountService.AccountInfo"),
+            report.method_status("AccountService.GetAccountState"),
             MethodStatus::Failing
         );
     }
@@ -282,14 +283,14 @@ mod tests {
     fn markdown_keeps_untested_methods_in_completion_denominator() {
         let mut report = Report::new("rpc", "grpc");
         report.record(ScenarioResult::new(
-            "AccountService.AccountInfo",
+            "AccountService.GetAccountState",
             "genesis account",
             Ok(()),
         ));
 
         let markdown = report.render_markdown();
 
-        assert!(markdown.contains("Passing methods | 1/17 (5%)"));
-        assert!(markdown.contains("Method coverage | 1/17 (5%)"));
+        assert!(markdown.contains("Passing methods | 1/18 (5%)"));
+        assert!(markdown.contains("Method coverage | 1/18 (5%)"));
     }
 }

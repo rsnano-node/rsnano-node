@@ -5,21 +5,20 @@ package nano.v1;
 import "nano/v1/types.proto";
 
 service AccountService {
-  rpc AccountInfo(AccountInfoRequest) returns (AccountInfoResponse);
-  rpc AccountBalance(AccountBalanceRequest) returns (AccountBalanceResponse);
-  rpc AccountHistory(AccountHistoryRequest) returns (AccountHistoryResponse);
-  rpc AccountRepresentative(AccountRepresentativeRequest) returns (AccountRepresentativeResponse);
+  rpc GetAccountState(GetAccountStateRequest) returns (GetAccountStateResponse);
+  rpc ListAccountHistory(ListAccountHistoryRequest) returns (ListAccountHistoryResponse);
 }
 
 service BlockService {
-  rpc Process(ProcessRequest) returns (ProcessResponse);
-  rpc BlockInfo(BlockInfoRequest) returns (BlockInfoResponse);
-  rpc Blocks(BlocksRequest) returns (BlocksResponse);
+  rpc PublishStateBlock(PublishStateBlockRequest) returns (PublishStateBlockResponse);
+  rpc GetBlock(GetBlockRequest) returns (GetBlockResponse);
+  rpc GetBlockStatuses(GetBlockStatusesRequest) returns (GetBlockStatusesResponse);
+  rpc RequestBlockConfirmation(RequestBlockConfirmationRequest) returns (RequestBlockConfirmationResponse);
 }
 
 service LedgerService {
   rpc FrontierCount(FrontierCountRequest) returns (FrontierCountResponse);
-  rpc ReceivableBlocks(ReceivableBlocksRequest) returns (ReceivableBlocksResponse);
+  rpc ListReceivables(ListReceivablesRequest) returns (ListReceivablesResponse);
 }
 
 service NetworkService {
@@ -33,8 +32,14 @@ service NodeService {
   rpc Keepalive(KeepaliveRequest) returns (KeepaliveResponse);
 }
 
-service SubscriptionService {
-  rpc SubscribeConfirmations(SubscribeConfirmationsRequest) returns (stream ConfirmationEvent);
-  rpc SubscribeTelemetry(SubscribeTelemetryRequest) returns (stream TelemetryEvent);
-  rpc SubscribeActiveElections(SubscribeActiveElectionsRequest) returns (stream ElectionEvent);
+// Event streams expose independent, live observations from this node. They do
+// not replay events, define a global block order, or replace ledger queries.
+// Delivery is at least once. Slow subscribers are closed rather than losing
+// events silently.
+service EventService {
+  rpc WatchConfirmations(WatchConfirmationsRequest) returns (stream ConfirmationEvent);
+  rpc WatchBlockProcessing(WatchBlockProcessingRequest) returns (stream BlockProcessingEvent);
+  rpc WatchElections(WatchElectionsRequest) returns (stream ElectionEvent);
+  rpc WatchVotes(WatchVotesRequest) returns (stream VoteEvent);
+  rpc WatchTelemetry(WatchTelemetryRequest) returns (stream TelemetryEvent);
 }

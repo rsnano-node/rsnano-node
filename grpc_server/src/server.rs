@@ -3,8 +3,8 @@ use std::sync::Arc;
 use anyhow::Context;
 use rsnano_grpc_proto::nano::v1::{
     account_service_server::AccountServiceServer, block_service_server::BlockServiceServer,
-    ledger_service_server::LedgerServiceServer, network_service_server::NetworkServiceServer,
-    node_service_server::NodeServiceServer, subscription_service_server::SubscriptionServiceServer,
+    event_service_server::EventServiceServer, ledger_service_server::LedgerServiceServer,
+    network_service_server::NetworkServiceServer, node_service_server::NodeServiceServer,
 };
 use rsnano_node::Node;
 use tonic::transport::{Identity, Server, ServerTlsConfig};
@@ -13,25 +13,27 @@ use tracing::info;
 use crate::GrpcServerConfig;
 use crate::interceptor::ApiKeyInterceptor;
 use crate::services::{
-    AccountServiceImpl, BlockServiceImpl, LedgerServiceImpl, NetworkServiceImpl, NodeServiceImpl,
-    SubscriptionServiceImpl,
+    AccountServiceImpl, BlockServiceImpl, EventServiceImpl, GrpcEventHub, LedgerServiceImpl,
+    NetworkServiceImpl, NodeServiceImpl,
 };
 
 pub async fn run_grpc_server(
     node: Arc<Node>,
     config: GrpcServerConfig,
+    event_hub: Arc<GrpcEventHub>,
     shutdown: impl Future<Output = ()>,
 ) -> anyhow::Result<()> {
     let addr = config.listening_addr()?;
     info!("gRPC listening address: {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    serve_grpc_server(node, config, listener, shutdown).await
+    serve_grpc_server(node, config, event_hub, listener, shutdown).await
 }
 
 async fn serve_grpc_server(
     node: Arc<Node>,
     config: GrpcServerConfig,
+    event_hub: Arc<GrpcEventHub>,
     listener: tokio::net::TcpListener,
     shutdown: impl Future<Output = ()>,
 ) -> anyhow::Result<()> {
@@ -42,11 +44,7 @@ async fn serve_grpc_server(
     let ledger_service = LedgerServiceImpl { node: node.clone() };
     let network_service = NetworkServiceImpl { node: node.clone() };
     let node_service = NodeServiceImpl { node: node.clone() };
-    let subscription_service = SubscriptionServiceImpl::new(
-        node.clone(),
-        config.stream_max_lag,
-        config.stream_send_timeout_ms,
-    );
+    let event_service = EventServiceImpl::new(event_hub, config.stream_max_lag);
 
     let mut server = Server::builder().tcp_nodelay(true);
     if config.enable_tls {
@@ -64,7 +62,7 @@ async fn serve_grpc_server(
         .add_service(LedgerServiceServer::new(ledger_service))
         .add_service(NetworkServiceServer::new(network_service))
         .add_service(NodeServiceServer::new(node_service))
-        .add_service(SubscriptionServiceServer::new(subscription_service));
+        .add_service(EventServiceServer::new(event_service));
 
     if config.enable_reflection {
         let reflection = tonic_reflection::server::Builder::configure()
@@ -161,9 +159,15 @@ mod tests {
         let address = listener.local_addr().unwrap();
         let node = Arc::new(Node::new_null());
         let (shutdown, wait_for_shutdown) = oneshot::channel();
-        let server = tokio::spawn(serve_grpc_server(node, config, listener, async move {
-            let _ = wait_for_shutdown.await;
-        }));
+        let server = tokio::spawn(serve_grpc_server(
+            node,
+            config,
+            GrpcEventHub::new(),
+            listener,
+            async move {
+                let _ = wait_for_shutdown.await;
+            },
+        ));
 
         let tls = ClientTlsConfig::new()
             .ca_certificate(Certificate::from_pem(TEST_CERT))
@@ -195,9 +199,14 @@ mod tests {
             ..GrpcServerConfig::new()
         };
 
-        let error = run_grpc_server(Arc::new(Node::new_null()), config, std::future::pending())
-            .await
-            .unwrap_err();
+        let error = run_grpc_server(
+            Arc::new(Node::new_null()),
+            config,
+            GrpcEventHub::new(),
+            std::future::pending(),
+        )
+        .await
+        .unwrap_err();
 
         assert_eq!(
             error.downcast_ref::<std::io::Error>().unwrap().kind(),

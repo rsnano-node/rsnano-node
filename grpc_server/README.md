@@ -22,8 +22,7 @@ at runtime in production.
 The Nano network is event-driven: blocks confirm, elections start and stop,
 telemetry updates arrive continuously. WebSockets can push these events, but the
 client must manage its own framing, back-pressure, and reconnection logic. gRPC
-server-streaming RPCs (`SubscribeConfirmations`, `SubscribeTelemetry`,
-`SubscribeActiveElections`) provide the same push semantics with built-in
+the server-streaming event RPCs provide the same push semantics with built-in
 flow-control (HTTP/2 windows), deadline propagation, and cancellation — all
 first-class concepts in every gRPC client library.
 
@@ -133,7 +132,7 @@ daemon
             ├─ LedgerService
             ├─ NetworkService
             ├─ NodeService
-            ├─ SubscriptionService   (server-streaming)
+            ├─ EventService          (five isolated live event streams)
             └─ tonic-reflection      (dev tooling)
 ```
 
@@ -142,8 +141,48 @@ infrastructure the JSON-RPC and WebSocket servers use. There is no
 intermediary layer — the gRPC handlers read directly from the ledger, network,
 and telemetry subsystems.
 
-`SubscriptionService` registers one telemetry callback for the gRPC server,
-then forwards events through a bounded dispatcher into per-client channels.
-Disconnected, closed, or persistently slow clients are removed from the
-dispatcher. This keeps network message-processing threads non-blocking and
-prevents callback accumulation across client reconnects.
+`EventService` exposes confirmation, block-processing, election, vote, and
+telemetry observations on independent dispatchers. A slow consumer can exhaust
+only its own stream family. Its bounded queue closes with `RESOURCE_EXHAUSTED`;
+events are never silently dropped for that subscriber.
+
+These streams are live-only and at-least-once. They have no replay cursor and
+make no global or cross-stream ordering promise. `WatchConfirmations` can match
+all blocks, exact hashes, or accounts; account matching includes the chain owner
+and a ledger-derived linked account for state and historical legacy blocks.
+Clients must deduplicate by block hash and reconcile after reconnecting. A
+notification is a node observation; only a `CEMENTED` query result says the
+block is at or below this node's confirmation height.
+
+## Reliable deposit watcher pattern
+
+A background integration should use the confirmation stream as a wake-up hint,
+not as its database. A generated Rust client can watch one account and reconcile
+confirmed receivables whenever it connects or receives an event:
+
+```rust,no_run
+let filter = ConfirmationFilter {
+    mode: Some(confirmation_filter::Mode::Accounts(AccountFilter {
+        accounts: vec![deposit_account.clone()],
+    })),
+};
+let mut stream = events.watch_confirmations(WatchConfirmationsRequest {
+    filter: Some(filter),
+    confirmation_types: vec![], // never filter a correctness-sensitive watcher
+    include_election_votes: false,
+}).await?.into_inner();
+
+// Run this immediately after every (re)connect too.
+reconcile_confirmed_receivables(&mut ledger, &deposit_account).await?;
+while let Some(event) = stream.message().await? {
+    let Some(block) = event.block else { continue };
+    if seen_hashes.insert(block.block_hash) {
+        reconcile_confirmed_receivables(&mut ledger, &deposit_account).await?;
+    }
+}
+```
+
+`reconcile_confirmed_receivables` calls `ListReceivables` with
+`RECEIVABLE_MODE_CONFIRMED_ONLY` and inserts each result under a unique
+`send_block_hash`. There is deliberately no date-ordered transaction feed:
+Nano accounts are independent chains in a block lattice.

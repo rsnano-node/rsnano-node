@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use rsnano_grpc_proto::nano::v1::{
-    FrontierCountRequest, FrontierCountResponse, ReceivableBlocksRequest, ReceivableBlocksResponse,
-    ReceivableInfo, ledger_service_server::LedgerService,
+    FrontierCountRequest, FrontierCountResponse, ListReceivablesRequest, ListReceivablesResponse,
+    ReceivableEntry, ReceivableMode, ledger_service_server::LedgerService,
 };
-use rsnano_ledger::AnySet;
+use rsnano_ledger::{AnySet, LedgerSet};
 use rsnano_node::Node;
-use rsnano_types::{Account, BlockHash};
+use rsnano_types::{Account, Amount, BlockHash};
 use tonic::{Request, Response, Status};
 
 pub struct LedgerServiceImpl {
@@ -19,40 +19,48 @@ impl LedgerService for LedgerServiceImpl {
         &self,
         _request: Request<FrontierCountRequest>,
     ) -> Result<Response<FrontierCountResponse>, Status> {
-        let count = self.node.ledger.account_count();
-        Ok(Response::new(FrontierCountResponse { count }))
+        Ok(Response::new(FrontierCountResponse {
+            count: self.node.ledger.account_count(),
+        }))
     }
 
-    async fn receivable_blocks(
+    async fn list_receivables(
         &self,
-        request: Request<ReceivableBlocksRequest>,
-    ) -> Result<Response<ReceivableBlocksResponse>, Status> {
-        let req = request.into_inner();
-        let account = Account::parse(&req.account)
+        request: Request<ListReceivablesRequest>,
+    ) -> Result<Response<ListReceivablesResponse>, Status> {
+        let request = request.into_inner();
+        let account = Account::parse(&request.account)
             .ok_or_else(|| Status::invalid_argument("invalid account"))?;
-
-        let count = if req.count > 0 {
-            req.count as usize
+        let minimum = if request.minimum_amount_raw.is_empty() {
+            Amount::ZERO
         } else {
-            1024
+            Amount::decode_dec(&request.minimum_amount_raw)
+                .map_err(|_| Status::invalid_argument("invalid minimum_amount_raw"))?
         };
-
+        let mode = ReceivableMode::try_from(request.mode)
+            .map_err(|_| Status::invalid_argument("invalid receivable mode"))?;
+        let limit = if request.limit == 0 {
+            1024
+        } else {
+            request.limit as usize
+        };
         let any = self.node.ledger.any();
-        let mut blocks = std::collections::HashMap::new();
-
-        for (key, info) in any
-            .account_receivable_upper_bound(account, BlockHash::ZERO)
-            .take(count)
-        {
-            blocks.insert(
-                key.send_block_hash.to_string(),
-                ReceivableInfo {
-                    amount: info.amount.to_string_dec(),
-                    source: info.source.encode_account(),
-                },
-            );
+        let mut receivables = Vec::new();
+        for (key, info) in any.account_receivable_upper_bound(account, BlockHash::ZERO) {
+            let cemented = any.confirmed().block_exists(&key.send_block_hash);
+            if info.amount < minimum || (mode == ReceivableMode::ConfirmedOnly && !cemented) {
+                continue;
+            }
+            receivables.push(ReceivableEntry {
+                send_block_hash: key.send_block_hash.to_string(),
+                amount_raw: info.amount.to_string_dec(),
+                source_account: info.source.encode_account(),
+                cemented,
+            });
+            if receivables.len() == limit {
+                break;
+            }
         }
-
-        Ok(Response::new(ReceivableBlocksResponse { blocks }))
+        Ok(Response::new(ListReceivablesResponse { receivables }))
     }
 }

@@ -4621,6 +4621,7 @@ dependencies = [
  "anyhow",
  "rsnano_grpc_proto",
  "rsnano_ledger",
+ "rsnano_messages",
  "rsnano_network",
  "rsnano_node",
  "rsnano_types",

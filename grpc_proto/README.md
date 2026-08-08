@@ -35,10 +35,20 @@ cargo build -p rsnano_grpc_proto
 
 - **Amounts** are encoded as decimal strings (e.g. `"1000000000000000000000000"`)
   to avoid precision loss across languages that lack native 128-bit integers.
-- **Hashes and block IDs** are hex-encoded strings, matching the convention used
-  by the existing JSON-RPC interface.
+- **Hashes and block IDs** are canonical uppercase hexadecimal strings.
 - **Account addresses** use the `nano_` prefix, consistent with the rest of the
   ecosystem.
+- **State-block submission** uses typed wire fields. `previous` and `link` are
+  canonical uppercase hashes; `balance_raw` is an unsigned decimal raw amount.
+  The node derives the multipurpose `link` meaning during normal processing.
+- **Block reads are historical-format aware.** `NanoBlock` contains typed state,
+  send, receive, open, and change variants. New publication remains state-only.
+- **There is no lattice-wide transaction order.** History is explicitly one
+  account chain, and local timestamps are diagnostic metadata rather than
+  consensus ordering data.
+- **Event watches** are live-only, at-least-once local observations. Clients
+  deduplicate hashes and reconcile with ledger queries after reconnecting.
+  Confirmation-type filters are not for correctness-sensitive accounting.
 - **Versioned package path** (`nano.v1`) allows non-breaking evolution of the
   schema alongside the node.
 

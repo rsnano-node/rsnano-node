@@ -87,10 +87,16 @@ impl DaemonBuilder {
 
         let websocket_enabled = daemon_config.node.websocket_config.enabled;
         let http_callback_enabled = daemon_config.node.rpc_callback_url().is_some();
+        #[cfg(feature = "grpc")]
+        let grpc_event_hub = rsnano_grpc_server::GrpcEventHub::new();
         let mut websocket_server = None;
         let mut node;
 
-        if websocket_enabled || http_callback_enabled || self.event_handler.is_some() {
+        if websocket_enabled
+            || http_callback_enabled
+            || self.event_handler.is_some()
+            || cfg!(feature = "grpc")
+        {
             let (ev_sender, ev_receiver) = sync_channel(1024 * 16);
             node = self.node_builder.event_sink(ev_sender).finish()?;
             let mut event_processor = CompositeNodeEventHandler::new(ev_receiver);
@@ -127,6 +133,12 @@ impl DaemonBuilder {
                 event_processor.add(ForwardNodeEvent(event_handler))
             }
 
+            #[cfg(feature = "grpc")]
+            event_processor.add(rsnano_grpc_server::GrpcNodeEventHandler::new(
+                grpc_event_hub.clone(),
+                node.ledger.clone(),
+            ));
+
             std::thread::Builder::new()
                 .name("Node ev proc".to_owned())
                 .spawn(move || {
@@ -137,6 +149,14 @@ impl DaemonBuilder {
             node = self.node_builder.finish()?;
         }
 
+        #[cfg(feature = "grpc")]
+        {
+            let telemetry_hub = grpc_event_hub.clone();
+            node.telemetry
+                .on_telemetry_processed(Box::new(move |data, endpoint| {
+                    telemetry_hub.publish_telemetry(data, endpoint);
+                }));
+        }
         node.start();
         let mut node = Arc::new(node);
 
@@ -157,6 +177,8 @@ impl DaemonBuilder {
             node.clone(),
             tx_stop,
             wait_for_shutdown,
+            #[cfg(feature = "grpc")]
+            grpc_event_hub,
         ))?;
 
         if let Some(ref websocket) = websocket_server {
@@ -200,6 +222,7 @@ async fn run_services(
     node: Arc<Node>,
     tx_stop: oneshot::Sender<()>,
     wait_for_shutdown: impl Future<Output = ()> + Send + 'static,
+    #[cfg(feature = "grpc")] grpc_event_hub: Arc<rsnano_grpc_server::GrpcEventHub>,
 ) -> anyhow::Result<()> {
     #[cfg(feature = "grpc")]
     {
@@ -215,6 +238,7 @@ async fn run_services(
             rsnano_grpc_server::run_grpc_server(
                 node_clone,
                 grpc_config,
+                grpc_event_hub,
                 grpc_shutdown_token.cancelled(),
             )
             .await

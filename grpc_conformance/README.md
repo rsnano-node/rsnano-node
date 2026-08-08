@@ -9,11 +9,12 @@ JSON-RPC interface on the same deterministic development-network ledger. It is
 the initial completion scoreboard for the gRPC add-on; cross-implementation
 comparison with the C++ Nano node is intentionally out of scope.
 
-The first suite targets the everyday 80:20 surface: account reads, balances,
-history, representatives, block lookup, common error statuses, ledger counts,
-receivables, peers, telemetry, and node metadata. Stateful confirmation,
-election, telemetry streams, and keepalive behavior remain visible as
-`NOT TESTED` rather than disappearing from the completion denominator.
+The suite targets the draft contract's reconciliation surface: atomic account
+state, account-chain-local history, typed block lookup, ordered local status
+queries, confirmation requests, ledger counts, and receivables. Publication and
+live confirmation/election/vote/telemetry behavior remain visible as
+`NOT TESTED` rather than disappearing from the completion denominator. It is a
+contract-level report, not a claim of full Node API coverage.
 
 ## Required development loop
 
@@ -116,11 +117,10 @@ The report publishes three separate measures:
   number executed.
 
 `ALL_METHODS` in `src/lib.rs` is the current inventory and report denominator.
-It currently contains the 17 methods already present in the gRPC contract.
-Therefore, the passing-method percentage is not yet overall coverage of every
-non-deprecated Nano RPC. The project target is every Nano RPC not marked
-deprecated in the authoritative Nano documentation; grow the inventory as that
-surface is added, and do not remove entries to improve the score.
+It currently contains the 18 methods present in the draft gRPC contract.
+Therefore, the passing-method percentage is contract completion rather than
+overall coverage of every Nano RPC. Grow the inventory as the contract expands,
+and do not remove entries to improve the score.
 
 ## Adding coverage
 

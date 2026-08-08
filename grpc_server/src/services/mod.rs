@@ -10,4 +10,4 @@ pub use block::BlockServiceImpl;
 pub use ledger::LedgerServiceImpl;
 pub use network::NetworkServiceImpl;
 pub use node::NodeServiceImpl;
-pub use subscription::SubscriptionServiceImpl;
+pub use subscription::{EventServiceImpl, GrpcEventHub, GrpcNodeEventHandler};

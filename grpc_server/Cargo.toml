@@ -9,6 +9,7 @@ rsnano_node = { path = "../node" }
 rsnano_ledger = { path = "../ledger" }
 rsnano_types = { path = "../types" }
 rsnano_network = { path = "../network" }
+rsnano_messages = { path = "../messages" }
 tonic = { version = "0.13", features = ["tls-ring"] }
 tonic-reflection = "0.13"
 tokio = { version = "1", features = ["fs", "macros", "rt-multi-thread", "sync", "time"] }
