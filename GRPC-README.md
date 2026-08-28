@@ -6,9 +6,26 @@ RsNano. The components may become suitable for upstream integration, but this
 repository does not assume that integration.
 
 The add-on gives Nano node integrators a versioned Protocol Buffer contract in
-addition to JSON-RPC and WebSocket. Generated clients can use typed unary and
-server-streaming methods over HTTP/2. JSON-RPC and WebSocket remain the
-compatibility baseline for existing integrations.
+addition to Nano RPC and WebSocket. Generated clients can use typed unary and
+server-streaming methods over HTTP/2. Nano RPC and WebSocket remain the
+compatibility baseline for existing integrations. Nano RPC is JSON-based but
+is not JSON-RPC.
+
+## Protocol scope
+
+`nano.v1` is a public, non-custodial node protocol. It is not a wallet
+developer protocol and it does not reproduce Nano RPC's on-node custodial
+key-store operations, historically grouped as “Wallet RPCs.” The current
+contract accepts already signed blocks with work; it does not expose private
+keys, seed phrases, signing, wallet lifecycle, or work generation.
+
+If this project later exposes node-hosted custody, it must use the separately
+versioned and independently enabled `nano.custodial_wallet.v1` protocol. The
+name means that the server stores or controls wallet secrets; it is not a
+general protocol for wallet applications. A remote work provider has a
+different authority and cost model, so it belongs in the separate optional
+`nano.proof_of_work.v1` protocol, rather than in `nano.v1` or
+`nano.custodial_wallet.v1`. Neither protocol exists in this checkout.
 
 ## Architecture
 
@@ -16,8 +33,8 @@ compatibility baseline for existing integrations.
   generated client and server types.
 - [`grpc_server`](grpc_server/README.md) implements that schema against the
   in-process RsNano node and runs as a feature-gated daemon task.
-- [`grpc_conformance`](grpc_conformance/README.md) compares gRPC with RsNano
-  JSON-RPC against one deterministic development-network ledger and writes the
+- [`grpc_conformance`](grpc_conformance/README.md) compares gRPC with RsNano's
+  Nano RPC implementation against one deterministic development-network ledger and writes the
   completion report.
 
 The server is in-process: handlers use the same node instance as the existing
@@ -48,6 +65,11 @@ rules.
 
 - [`GRPC-ROADMAP.md`](GRPC-ROADMAP.md) — milestones, scope boundaries, and
   merge-safe documentation rules.
+- [`docs/grpc/new-developer-guide.md`](docs/grpc/new-developer-guide.md) —
+  newcomer-oriented explanation of Nano RPC, `nano.v1`, and the optional future
+  authority protocols.
+- [`docs/grpc/new-developer-guide.html`](docs/grpc/new-developer-guide.html) —
+  standalone rendered version of the newcomer guide.
 - [`grpc_proto/README.md`](grpc_proto/README.md) — schema and generated types.
 - [`grpc_server/README.md`](grpc_server/README.md) — server configuration and
   implementation architecture.

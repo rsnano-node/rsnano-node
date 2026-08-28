@@ -127,10 +127,10 @@ impl Report {
         writeln!(output, "# RsNano gRPC conformance report\n").unwrap();
         writeln!(
             output,
-            "This contract-level report compares the current gRPC implementation with RsNano JSON-RPC on the same deterministic development-network ledger. It is not a claim of full Node API coverage; complex wallet, peer-topology, election, and streaming state remains outside this first 80:20 suite.\n"
+            "This contract-level report compares the current gRPC implementation with RsNano's Nano RPC implementation on the same deterministic development-network ledger. It is not a claim of full Node API coverage; complex on-node custody, peer-topology, election, and streaming state remains outside this first 80:20 suite.\n"
         )
         .unwrap();
-        writeln!(output, "- JSON-RPC endpoint: `{}`", self.rpc_url).unwrap();
+        writeln!(output, "- Nano RPC endpoint: `{}`", self.rpc_url).unwrap();
         writeln!(output, "- gRPC endpoint: `{}`", self.grpc_url).unwrap();
         writeln!(output, "- Total gRPC methods: `{}`", ALL_METHODS.len()).unwrap();
         writeln!(output, "- Methods exercised: `{tested_methods}`").unwrap();

@@ -309,7 +309,7 @@ fn field<'a>(value: &'a Value, name: &str) -> Result<&'a str, String> {
     value
         .get(name)
         .and_then(Value::as_str)
-        .ok_or_else(|| format!("missing JSON-RPC field {name}: {value}"))
+        .ok_or_else(|| format!("missing Nano RPC field {name}: {value}"))
 }
 fn compare(actual: &str, expected: &str) -> Result<(), String> {
     if actual == expected {

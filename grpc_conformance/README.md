@@ -5,7 +5,7 @@ For the cross-crate architecture and roadmap, see
 [`GRPC-ROADMAP.md`](../GRPC-ROADMAP.md).
 
 This black-box suite compares the experimental gRPC interface with RsNano's
-JSON-RPC interface on the same deterministic development-network ledger. It is
+Nano RPC interface on the same deterministic development-network ledger. It is
 the initial completion scoreboard for the gRPC add-on; cross-implementation
 comparison with the C++ Nano node is intentionally out of scope.
 
@@ -95,8 +95,8 @@ scoreboard so prior manual activity cannot change the fixture.
 
 Keep these rules intact when extending the suite:
 
-1. Use RsNano JSON-RPC as the behavioral reference for this phase.
-2. Send JSON-RPC and gRPC requests to the same fresh RsNano process.
+1. Use RsNano's Nano RPC implementation as the behavioral reference for this phase.
+2. Send Nano RPC and gRPC requests to the same fresh RsNano process.
 3. Use the development network; never sync or depend on the mainnet lattice.
 4. Compare stable semantics and explicitly normalize intentional representation
    differences. Do not ignore a field merely to make a scenario pass.
@@ -135,7 +135,8 @@ For each incremental RPC addition:
 7. Run the required development loop.
 8. Review and commit the updated `reports/current.md` with the code.
 
-Prioritize the everyday 80:20 surface before fixtures that require wallets,
+Prioritize the everyday 80:20 surface before fixtures that require on-node
+custody,
 multiple peers, active elections, or long-lived streams. When complex state is
 deferred, keep the method as `NOT TESTED` and make the missing premise clear in
 the scenario plan or change description.

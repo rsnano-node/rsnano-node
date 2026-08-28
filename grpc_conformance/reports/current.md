@@ -1,8 +1,8 @@
 # RsNano gRPC conformance report
 
-This contract-level report compares the current gRPC implementation with RsNano JSON-RPC on the same deterministic development-network ledger. It is not a claim of full Node API coverage; publication and live event scenarios require a running development node.
+This contract-level report compares the current gRPC implementation with RsNano's Nano RPC implementation on the same deterministic development-network ledger. It is not a claim of full Node API coverage; publication and live event scenarios require a running development node.
 
-- JSON-RPC endpoint: `http://127.0.0.1:45000`
+- Nano RPC endpoint: `http://127.0.0.1:45000`
 - gRPC endpoint: `http://127.0.0.1:47078`
 - Total gRPC methods: `18`
 - Methods exercised: `0`

@@ -4,13 +4,14 @@ gRPC interface for RsNano, providing a typed, streaming, and language-agnostic A
 
 ## Why gRPC?
 
-RsNano already exposes a JSON-RPC server and a WebSocket server. A gRPC interface
+RsNano already exposes a Nano RPC server and a WebSocket server. Nano RPC uses
+JSON request and response bodies but is not JSON-RPC. A gRPC interface
 complements both and addresses a different set of trade-offs that matter when
 building application-layer services on top of a node.
 
 ### Strongly-typed contracts
 
-JSON-RPC is schema-less by convention — clients and servers agree on field names
+Nano RPC uses a proprietary JSON envelope — clients and servers agree on field names
 and shapes through documentation alone. gRPC uses Protocol Buffers as a formal
 contract. The `.proto` files in `grpc_proto/` are the single source of truth:
 both the server and any client (Go, Python, TypeScript, Rust, ...) derive their
@@ -41,13 +42,13 @@ Rust can all consume the same node interface without bespoke client libraries.
 Server reflection (enabled by default in development) allows tools like
 `grpcurl` to explore the API at runtime without pre-compiled stubs.
 
-### Complementary to JSON-RPC and WebSocket
+### Complementary to Nano RPC and WebSocket
 
 The three interfaces serve different audiences:
 
 | Interface | Best for |
 |-----------|----------|
-| JSON-RPC | Ad-hoc tooling, scripts, environments where JSON is the norm |
+| Nano RPC | Ad-hoc tooling, scripts, environments where JSON is the norm |
 | WebSocket | Browser clients, lightweight pub/sub with minimal setup |
 | gRPC | Backend services, typed clients, streaming workloads, multi-language stacks |
 
@@ -125,7 +126,7 @@ authentication is disabled.
 ```
 daemon
   └─ run_services()
-       ├─ run_rpc()              # JSON-RPC (existing)
+       ├─ run_rpc()              # Nano RPC (existing)
        └─ run_grpc_server()      # gRPC (feature = "grpc")
             ├─ AccountService
             ├─ BlockService
@@ -137,7 +138,7 @@ daemon
 ```
 
 Every service handler receives an `Arc<Node>` and calls into the same
-infrastructure the JSON-RPC and WebSocket servers use. There is no
+infrastructure the Nano RPC and WebSocket servers use. There is no
 intermediary layer — the gRPC handlers read directly from the ledger, network,
 and telemetry subsystems.
 
