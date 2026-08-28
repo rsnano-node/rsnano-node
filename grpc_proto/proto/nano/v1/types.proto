@@ -1,0 +1,357 @@
+syntax = "proto3";
+
+package nano.v1;
+
+option java_package = "nano.v1";
+option go_package = "nano/v1";
+
+enum Epoch {
+  EPOCH_UNSPECIFIED = 0;
+  EPOCH_0 = 1;
+  EPOCH_1 = 2;
+  EPOCH_2 = 3;
+}
+
+enum BlockSubtype {
+  BLOCK_SUBTYPE_UNSPECIFIED = 0;
+  BLOCK_SUBTYPE_SEND = 1;
+  BLOCK_SUBTYPE_RECEIVE = 2;
+  BLOCK_SUBTYPE_OPEN = 3;
+  BLOCK_SUBTYPE_CHANGE = 4;
+  BLOCK_SUBTYPE_EPOCH = 5;
+}
+
+enum BlockLocalState {
+  BLOCK_LOCAL_STATE_UNSPECIFIED = 0;
+  BLOCK_LOCAL_STATE_NOT_PRESENT = 1;
+  BLOCK_LOCAL_STATE_PROCESSED = 2;
+  BLOCK_LOCAL_STATE_CEMENTED = 3;
+}
+
+enum PublishDisposition {
+  PUBLISH_DISPOSITION_UNSPECIFIED = 0;
+  PUBLISH_DISPOSITION_ACCEPTED = 1;
+  PUBLISH_DISPOSITION_ALREADY_PRESENT = 2;
+}
+
+enum ConfirmationType {
+  CONFIRMATION_TYPE_UNSPECIFIED = 0;
+  CONFIRMATION_TYPE_ACTIVE_QUORUM = 1;
+  CONFIRMATION_TYPE_ACTIVE_CONFIRMATION_HEIGHT = 2;
+  CONFIRMATION_TYPE_INACTIVE = 3;
+}
+
+enum BlockSource {
+  BLOCK_SOURCE_UNSPECIFIED = 0;
+  BLOCK_SOURCE_LIVE = 1;
+  BLOCK_SOURCE_LIVE_ORIGINATOR = 2;
+  BLOCK_SOURCE_BOOTSTRAP = 3;
+  BLOCK_SOURCE_UNCHECKED = 4;
+  BLOCK_SOURCE_LOCAL = 5;
+  BLOCK_SOURCE_FORCED = 6;
+}
+
+enum BlockProcessCode {
+  BLOCK_PROCESS_CODE_UNSPECIFIED = 0;
+  BLOCK_PROCESS_CODE_ACCEPTED = 1;
+  BLOCK_PROCESS_CODE_OLD = 2;
+  BLOCK_PROCESS_CODE_BAD_SIGNATURE = 3;
+  BLOCK_PROCESS_CODE_NEGATIVE_SPEND = 4;
+  BLOCK_PROCESS_CODE_FORK = 5;
+  BLOCK_PROCESS_CODE_UNRECEIVABLE = 6;
+  BLOCK_PROCESS_CODE_GAP_PREVIOUS = 7;
+  BLOCK_PROCESS_CODE_GAP_SOURCE = 8;
+  BLOCK_PROCESS_CODE_OPENED_BURN_ACCOUNT = 9;
+  BLOCK_PROCESS_CODE_BALANCE_MISMATCH = 10;
+  BLOCK_PROCESS_CODE_REPRESENTATIVE_MISMATCH = 11;
+  BLOCK_PROCESS_CODE_BLOCK_POSITION = 12;
+  BLOCK_PROCESS_CODE_INSUFFICIENT_WORK = 13;
+  BLOCK_PROCESS_CODE_GAP_EPOCH_OPEN_PENDING = 14;
+  BLOCK_PROCESS_CODE_CONFLICT = 15;
+}
+
+enum ElectionTransition {
+  ELECTION_TRANSITION_UNSPECIFIED = 0;
+  ELECTION_TRANSITION_STARTED = 1;
+  ELECTION_TRANSITION_STOPPED = 2;
+}
+
+message StateBlock {
+  string account = 1;
+  string previous = 2;
+  string representative = 3;
+  string balance_raw = 4;
+  string link = 5;
+  string signature = 6;
+  string work = 7;
+}
+
+message LegacySendBlock {
+  string previous = 1;
+  string destination = 2;
+  string balance_raw = 3;
+  string signature = 4;
+  string work = 5;
+}
+
+message LegacyReceiveBlock {
+  string previous = 1;
+  string source = 2;
+  string signature = 3;
+  string work = 4;
+}
+
+message LegacyOpenBlock {
+  string source = 1;
+  string representative = 2;
+  string account = 3;
+  string signature = 4;
+  string work = 5;
+}
+
+message LegacyChangeBlock {
+  string previous = 1;
+  string representative = 2;
+  string signature = 3;
+  string work = 4;
+}
+
+message NanoBlock {
+  oneof kind {
+    StateBlock state = 1;
+    LegacySendBlock legacy_send = 2;
+    LegacyReceiveBlock legacy_receive = 3;
+    LegacyOpenBlock legacy_open = 4;
+    LegacyChangeBlock legacy_change = 5;
+  }
+}
+
+message BlockSideband {
+  string account = 1;
+  uint64 account_height = 2;
+  uint64 local_timestamp_unix_ms = 3;
+  string resulting_balance_raw = 4;
+  Epoch epoch = 5;
+  Epoch source_epoch = 6;
+  BlockSubtype subtype = 7;
+}
+
+message BlockRecord {
+  string block_hash = 1;
+  NanoBlock block = 2;
+  BlockSideband sideband = 3;
+  string amount_raw = 4;
+  optional string linked_account = 5;
+  BlockLocalState local_state = 6;
+}
+
+message PublishStateBlockRequest { StateBlock block = 1; }
+message PublishStateBlockResponse {
+  string block_hash = 1;
+  PublishDisposition disposition = 2;
+}
+
+message GetBlockRequest { string block_hash = 1; }
+message GetBlockResponse { BlockRecord block = 1; }
+
+message GetBlockStatusesRequest { repeated string block_hashes = 1; }
+message BlockStatus {
+  string block_hash = 1;
+  BlockLocalState local_state = 2;
+}
+message GetBlockStatusesResponse { repeated BlockStatus statuses = 1; }
+
+message RequestBlockConfirmationRequest { string block_hash = 1; }
+message RequestBlockConfirmationResponse { bool election_requested = 1; }
+
+message AccountChainState {
+  string frontier = 1;
+  string balance_raw = 2;
+  string representative = 3;
+  uint64 block_count = 4;
+  Epoch epoch = 5;
+}
+
+message GetAccountStateRequest { string account = 1; }
+message GetAccountStateResponse {
+  string account = 1;
+  AccountChainState current = 2;
+  AccountChainState confirmed = 3;
+  string receivable_raw = 4;
+}
+
+message ListAccountHistoryRequest {
+  string account = 1;
+  optional string head = 2;
+  uint32 limit = 3;
+  bool ascending = 4;
+}
+message ListAccountHistoryResponse {
+  repeated BlockRecord blocks = 1;
+  optional string next = 2;
+}
+
+message FrontierCountRequest {}
+message FrontierCountResponse { uint64 count = 1; }
+
+enum ReceivableMode {
+  RECEIVABLE_MODE_CONFIRMED_ONLY = 0;
+  RECEIVABLE_MODE_ALL_LOCAL = 1;
+}
+message ListReceivablesRequest {
+  string account = 1;
+  uint32 limit = 2;
+  string minimum_amount_raw = 3;
+  ReceivableMode mode = 4;
+}
+message ReceivableEntry {
+  string send_block_hash = 1;
+  string amount_raw = 2;
+  string source_account = 3;
+  bool cemented = 4;
+}
+message ListReceivablesResponse { repeated ReceivableEntry receivables = 1; }
+
+message PeersRequest {}
+message PeersResponse { map<string, PeerInfo> peers = 1; }
+message PeerInfo {
+  string protocol_version = 1;
+  string node_id = 2;
+  string type = 3;
+  string account = 4;
+  string weight = 5;
+}
+
+message TelemetryRequest { string address = 1; uint32 port = 2; }
+message TelemetryResponse {
+  string block_count = 1;
+  string cemented_count = 2;
+  string unchecked_count = 3;
+  string account_count = 4;
+  string bandwidth_cap = 5;
+  string peer_count = 6;
+  string protocol_version = 7;
+  string uptime = 8;
+  string genesis_block = 9;
+  string major_version = 10;
+  string minor_version = 11;
+  string patch_version = 12;
+  string pre_release_version = 13;
+  string maker = 14;
+  uint64 timestamp = 15;
+  string node_id = 16;
+  string signature = 17;
+}
+
+message StatusRequest {}
+message StatusResponse {
+  string version = 1;
+  bool synced = 2;
+  bool bootstrap_storage = 3;
+  uint64 block_count = 4;
+  string cemented_count = 5;
+  uint64 unchecked_count = 6;
+  uint64 account_count = 7;
+  uint64 bandwidth_cap = 8;
+  uint64 peer_count = 9;
+  string protocol_version = 10;
+  uint64 uptime = 11;
+  string genesis_block = 12;
+  string major_version = 13;
+  string minor_version = 14;
+  string patch_version = 15;
+  string pre_release_version = 16;
+  string maker = 17;
+  uint64 timestamp = 18;
+  string node_id = 19;
+  string signature = 20;
+  bool active_difficulty = 21;
+}
+
+message VersionRequest {}
+message VersionResponse {
+  string rpc_version = 1;
+  string store_version = 2;
+  string protocol_version = 3;
+  string node_vendor = 4;
+  uint64 store_vendor = 5;
+  string network = 6;
+  string network_identifier = 7;
+  string build_info = 8;
+}
+message KeepaliveRequest { string address = 1; uint32 port = 2; }
+message KeepaliveResponse {}
+
+message ConfirmationFilter {
+  oneof mode {
+    bool all = 1;
+    BlockHashFilter block_hashes = 2;
+    AccountFilter accounts = 3;
+  }
+}
+message BlockHashFilter { repeated string block_hashes = 1; }
+message AccountFilter { repeated string accounts = 1; }
+message WatchConfirmationsRequest {
+  ConfirmationFilter filter = 1;
+  repeated ConfirmationType confirmation_types = 2;
+  bool include_election_votes = 3;
+}
+
+message ElectionVote {
+  string representative = 1;
+  string block_hash = 2;
+  string weight_raw = 3;
+  uint64 created_timestamp_ms = 4;
+  bool final_vote = 5;
+}
+message ElectionSummary {
+  string tally_raw = 1;
+  string final_tally_raw = 2;
+  uint32 candidate_block_count = 3;
+  uint32 voter_count = 4;
+  uint64 duration_ms = 5;
+  repeated ElectionVote votes = 6;
+}
+message ConfirmationEvent {
+  BlockRecord block = 1;
+  ConfirmationType confirmation_type = 2;
+  uint64 observed_at_unix_ms = 3;
+  ElectionSummary election = 4;
+}
+
+message WatchBlockProcessingRequest {}
+message BlockProcessingResult {
+  string block_hash = 1;
+  BlockProcessCode code = 2;
+  BlockRecord block = 3;
+  BlockSource source = 4;
+}
+message BlockProcessingEvent {
+  uint64 observed_at_unix_ms = 1;
+  repeated BlockProcessingResult results = 2;
+}
+
+message WatchElectionsRequest {}
+message ElectionEvent {
+  string block_hash = 1;
+  ElectionTransition transition = 2;
+  uint64 observed_at_unix_ms = 3;
+}
+
+message WatchVotesRequest {}
+message VoteEvent {
+  string representative = 1;
+  string signature = 2;
+  repeated string block_hashes = 3;
+  uint64 created_timestamp_ms = 4;
+  bool final_vote = 5;
+  string result = 6;
+  uint64 observed_at_unix_ms = 7;
+}
+
+message WatchTelemetryRequest {}
+message TelemetryEvent {
+  string endpoint = 1;
+  TelemetryResponse telemetry = 2;
+  uint64 observed_at_unix_ms = 3;
+}

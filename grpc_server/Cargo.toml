@@ -1,0 +1,24 @@
+[package]
+name = "rsnano_grpc_server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rsnano_grpc_proto = { path = "../grpc_proto" }
+rsnano_node = { path = "../node" }
+rsnano_ledger = { path = "../ledger" }
+rsnano_types = { path = "../types" }
+rsnano_network = { path = "../network" }
+rsnano_messages = { path = "../messages" }
+tonic = { version = "0.13", features = ["tls-ring"] }
+tonic-reflection = "0.13"
+tokio = { version = "1", features = ["fs", "macros", "rt-multi-thread", "sync", "time"] }
+tokio-stream = { version = "0.1", features = ["net"] }
+tracing = "0.1"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+test_helpers = { path = "../tools/test_helpers" }
+tempfile = "3"

@@ -1,0 +1,34 @@
+services:
+  node:
+    build:
+      context: ..
+      dockerfile: grpc_conformance/Dockerfile
+    command:
+      - /usr/bin/rsnano
+      - --network=dev
+      - --data-path=/data
+      - node
+      - run
+      - --disable-rep-crawler
+    expose:
+      - "45000"
+      - "47078"
+
+  conformance:
+    build:
+      context: ..
+      dockerfile: grpc_conformance/Dockerfile
+    depends_on:
+      - node
+    entrypoint:
+      - /usr/bin/grpc-conformance
+    command:
+      - --rpc-url
+      - http://node:45000
+      - --grpc-url
+      - http://node:47078
+      - --report
+      - /reports/current.md
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    volumes:
+      - ./reports:/reports

@@ -1,5 +1,8 @@
 [workspace]
 members = [
+	"grpc_conformance",
+	"grpc_proto",
+	"grpc_server",
 	"nullables/output_tracker",
 	"nullables/fs",
 	"nullables/tcp",

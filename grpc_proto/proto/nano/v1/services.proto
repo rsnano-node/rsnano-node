@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package nano.v1;
+
+import "nano/v1/types.proto";
+
+service AccountService {
+  rpc GetAccountState(GetAccountStateRequest) returns (GetAccountStateResponse);
+  rpc ListAccountHistory(ListAccountHistoryRequest) returns (ListAccountHistoryResponse);
+}
+
+service BlockService {
+  rpc PublishStateBlock(PublishStateBlockRequest) returns (PublishStateBlockResponse);
+  rpc GetBlock(GetBlockRequest) returns (GetBlockResponse);
+  rpc GetBlockStatuses(GetBlockStatusesRequest) returns (GetBlockStatusesResponse);
+  rpc RequestBlockConfirmation(RequestBlockConfirmationRequest) returns (RequestBlockConfirmationResponse);
+}
+
+service LedgerService {
+  rpc FrontierCount(FrontierCountRequest) returns (FrontierCountResponse);
+  rpc ListReceivables(ListReceivablesRequest) returns (ListReceivablesResponse);
+}
+
+service NetworkService {
+  rpc Peers(PeersRequest) returns (PeersResponse);
+  rpc Telemetry(TelemetryRequest) returns (TelemetryResponse);
+}
+
+service NodeService {
+  rpc Status(StatusRequest) returns (StatusResponse);
+  rpc Version(VersionRequest) returns (VersionResponse);
+  rpc Keepalive(KeepaliveRequest) returns (KeepaliveResponse);
+}
+
+// Event streams expose independent, live observations from this node. They do
+// not replay events, define a global block order, or replace ledger queries.
+// Delivery is at least once. Slow subscribers are closed rather than losing
+// events silently.
+service EventService {
+  rpc WatchConfirmations(WatchConfirmationsRequest) returns (stream ConfirmationEvent);
+  rpc WatchBlockProcessing(WatchBlockProcessingRequest) returns (stream BlockProcessingEvent);
+  rpc WatchElections(WatchElectionsRequest) returns (stream ElectionEvent);
+  rpc WatchVotes(WatchVotesRequest) returns (stream VoteEvent);
+  rpc WatchTelemetry(WatchTelemetryRequest) returns (stream TelemetryEvent);
+}
